@@ -1,2 +1,2 @@
 # ML1000-Course-Project
-YORK UNIVERSITY. SCHOOL OF CONTINUING STUDIES. MACHINE LEARNING IN BUSINESS CONTEXT
+York University. ML1000 - Machine Learning in Business Context. Course Project
