@@ -2,3 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+/scripts/main.tex
+/scripts/RJwrapper.log
+/scripts/missfont.log
+/shiny/rsconnect/

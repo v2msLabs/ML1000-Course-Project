@@ -1,0 +1,165 @@
+---
+title: Credit Card Default Research
+author:
+  - name: Sumaira Afzal
+    affiliation: York University School of Continuing Studies
+  - name: Viraja Ketkar
+    affiliation: York University School of Continuing Studies
+  - name: Murlidhar Loka
+    affiliation: York University School of Continuing Studies
+  - name: Vadim Spirkov
+    affiliation: York University School of Continuing Studies
+abstract: >
+  Credit card default might very well be a life altering event. It happens when a client have become severely delinquent on his/her credit card payment. It's a serious credit card status that not only affects person's standing with that credit card issuer, but also individual's credit standing in general and his/her ability to get approved for credit cards, loans, and other credit-based services. This research will make yet another attempt to predict if a client goint to default on the next payment. Employing verious machine learning technique we also will make an attemt to estime the amount a client would be able to pay when the bill comes. The authors of this study will try to discover who is more likely to default on the payment.
+
+output:
+  rticles::rjournal_article:
+    includes:
+      in_header: preamble.tex
+   
+---
+
+
+
+```{r echo=FALSE, message=FALSE, warnings=FALSE}
+# load required libraries
+library(ggplot2) # plotting lib
+library(gridExtra) # arrange grids
+library(dplyr)  # data manipuation
+library(corrplot) # correlation matrix plotting/printing
+library(pROC) # to measure model performance
+library(RColorBrewer) # color palettes
+library(party) # classification tree
+library(klaR) # naive bayes
+library(caret) # predictive models
+library(factoextra) # advanced plots
+
+# Clean all variables that might be left by other script to avoid collusion
+rm(list=ls(all=TRUE))
+
+# pick palettes
+mainPalette = brewer.pal(8,"Dark2")
+# set a sample size
+SampleSize = 30000
+```
+
+```{r global_options, include=FALSE}
+# make the images flow nicely
+knitr::opts_chunk$set(fig.pos = 'H', echo = T,comment = NA, prompt = F, 
+                      cache = F, warning = F, message = F,  fig.align="center")
+```
+
+
+## Background
+
+Overdepandance on credit card debt has been an ongoing theme in many countries around the word. For example US consumers started 2018 owing more than $1 trillion in credit card debt (Ref: \cite{wallethub}) It is projected that by the end of 2019 US consumers will increase their collective debt by another 60 billion dollars. Unfortunately many consumers overestimate their ability to pay the debt on time, or the unforeseen circumstances and luck of savings make people default on their payments. This is the least desirable outcome for all parties. Unpaid debt leads, in most cases, to default on the whole outstanding balance causing financial loss for the credit institutions. Majority of the clients go through tremendous emotional and financial stress, risking their credibility. The financial institution make significant efforts to evaluate the prospective client ability to sustain the debt and pay in time to avoid the credit default.  
+
+
+## Objective
+
+This study pursues a few goals. First of all employing the client personal characteristics and the last six month payment history we would like to predict ax accurate as possible if the client makes the next month payment or defaults. We will employ a few supervised learning models to attack the problem. 
+
+Another objective is to understand which features of the data set have the most impact on the next payment success/ failure.
+
+We are also motivated to unearth, if possible, any trend that might shed light on what make people to default on the payment. And lastly the authors of this study will try to estimate how much a client could pay when the next bill comes 
+
+
+# Data Analysis
+
+This research employs the data set sourced from [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients). This real-life data comprises 30000 observations of the credit card payment history of Taiwan consumers.
+
+
+## Data Dictionary
+
+Column Name            | Column Description  
+-----------------------| ------------------------------------------------------  
+ID                     | Customer ID
+LIMIT_BAL              | Amount of the given credit (NT dollar): it includes both the individual consumer credit and his/her family (supplementary) credit
+SEX                    | Gender (1 = male; 2 = female).
+EDUCATION              | Education (1 = graduate school; 2 = university; 3 = high school; 4 = others).
+MARRIAGE               | Marital status (1 = married; 2 = single; 3 = others). 
+AGE                    | Age (year)
+PAY_1                  | PAY_1 - PAY_6 are payment statuses over a course of the last six months, where  -1 = pay duly. Positive numbrs denote payment delay in months. PAY_0  - Payment status in September
+PAY_2                  | Payment status in August
+PAY_3                  | Payment status in July
+PAY_4                  | Payment status in June
+PAY_5                  | Payment status in May
+PAY_6                  | Payment status in April
+BILL_AMT1              | BILL_AMT1 - BILL_AMT6 are bill amounts (NT dollar) from April till September. BILL_AMT1: September bill 
+BILL_AMT2              | August bill
+BILL_AMT3              | July bill
+BILL_AMT4              | June bill
+BILL_AMT5              | May bill
+BILL_AMT6              | April bill
+PAY_AMT1               | Amount of previous payment (NT dollar). PAY_AMT1: paid in September (August bill)
+PAY_AMT2               | Amount paid in August (July bill)
+PAY_AMT3               | Amount paid in July (June bill)
+PAY_AMT4               | Amount paid in June (May bill)
+PAY_AMT5               | Amount paid in May (April bill)
+PAY_AMT6               | Amount paid in April (March bill)
+**DEFAULT_NEXT_MONTH** | **Target label that denotes whether the client paid next bill or did not (Yes = 1, No = 0)** 
+
+
+## Data Exploration
+
+```{r}
+original = read.csv("../data/default-cc.csv", header = T, 
+                na.strings = c("NA","","#NA"),sep=",")
+str(original)
+```
+
+### Data correlation and other observations
+
+#### Takeaways from Data Exploration Excersize
+
+
+## Data Preparation
+
+
+### Data Imputing
+
+# Modeling and Evalutation
+
+## Feature Selection
+
+
+### Data Upsampling
+
+
+## Decision Tree Model
+
+
+## Naive Bayes Model
+
+
+## Random Forest Model
+
+
+## Logistic Regression Model
+
+
+## Model Comparison
+
+
+#### AUC - ROC perfomance
+
+
+#### Model interpretibility
+
+#### Data Preparation
+
+#### Verdict
+
+Despite sensitivity to data quality Logistic Regression outperforms other models in all other major categories. This is our choice!
+
+
+# Model Deployment
+
+
+# Conclusion
+
+\bibliography{RJreferences}
+
+# Note from the Authors
+
+This file was generated using [_The R Journal_ style article template](https://github.com/rstudio/rticles), additional information on how to prepare articles for submission is here - [Instructions for Authors](https://journal.r-project.org/share/author-guide.pdf). The article itself is an executable R Markdown file that could be [downloaded from Github](https://github.com/ivbsoftware/big-data-final-2/blob/master/docs/R_Journal/big-data-final-2/) with all the necessary artifacts.
