@@ -34,7 +34,8 @@ library(caret) # predictive models
 library(factoextra) # advanced plots
 library(summarytools) # nicer data summary stats
 library(xtable) # nice table formats
-
+library(reshape) # dataframe transformation
+library(corrplot) # nice correlation plots
 # Clean all variables that might be left by other script to avoid collusion
 rm(list=ls(all=T))
 source('utils.R') # supplementary code
@@ -118,13 +119,15 @@ PAY_AMT6               | Amount paid in April (March bill)
 
 ## Data Exploration
 
-We start our research with the data exploration. 
+### Feature Analytics
+
+We start our research with the feature exploration and understanding. 
 
 ```{r dataset_summary, results="asis", echo = FALSE}
 original = read.csv("../data/default-cc.csv", header = T, 
                 na.strings = c("NA","","#NA"),sep=",")
 print(dfSummary(original, valid.col = F, max.distinct.values = 3, heading = F, method = "render"),
-       caption = "\\label{tab:dataset_summary} Credit Card Payment Data Summary", scalebbox = .9)
+       caption = "\\label{tab:dataset_summary} Credit Card Payment Data Summary", scalebbox = .8)
 ```
 
 Table \ref{tab:dataset_summary} describes main statistical parameters of each column. It also outputs the values of the binary features. The first thing that jumps at us is that the data set has no missing data! We shall note that our target feature is not balanced. Almost **80%** of the clients do pay on time. Secondly female customers make **60%** of the data set. **Customer ID** column, as usual, will be dropped since it presents no analytical value. Here is a look at the data sample.
@@ -136,7 +139,7 @@ print (xtable(original[1:12,13:23],
   scalebox = .6)
 ```
 
-Let's review demographic characteristics of the customer base, namely: *EDUCATION*, *MARITAL STATUS* and *AGE*. We immediately can observe some deficiencies in the data quality (Figure: \ref{fig:demographics}). As we see the majority of the credit card users have university degree. But there are three groups which are not supposed to be in the data set: **Unknown** - code **0**, **Unknown5** - code **5** and **Unkown6** - code **6**. We will assign these customers to the **Other** group, since the description for the aforementioned codes is not provided. 
+Let's review demographic characteristics of the customer base, namely: *EDUCATION*, *MARITAL STATUS* and *AGE*. We immediately can observe some deficiencies in the data quality (Figure: \ref{fig:demographics}). As we see the majority of the credit card holders have a university degree. There are three groups which are not supposed to be in the data set: **Unknown** - code **0**, **Unknown5** - code **5** and **Unkown6** - code **6**. We will assign these customers to the **Other** group, since the description for the aforementioned codes is not provided. 
 
 Number of single people is slightly higher than the number of the married ones. 
 
@@ -187,38 +190,127 @@ grid.arrange(p1,p2,p3,p4,p5,p6)
 As we have already noticed many of the credit card holders pay duly, codes: *-2 and -1* (see Figure: \ref{fig:payment_status}). Majority of the customers do maintain good standing. Noticeably though they **paid the required minimum or more but not the full balance** (code *0*). There is a rather significant group that falls behind with the payment by one or two months.
 The next group of features are the bill amounts for the last six months.
 ```{r bill_density, fig.align="center", fig.cap="Customer Bill Amount Distribution for the Last Six Months", echo=FALSE, fig.height=10}
-p1 = ggplot(original, aes(x=BILL_AMT1)) + geom_density(fill=mainPalette[1], colour=mainPalette[1], alpha = 0.2)
-p2 = ggplot(original, aes(x=BILL_AMT2)) + geom_density(fill=mainPalette[2], colour=mainPalette[2], alpha = 0.2)
-p3 = ggplot(original, aes(x=BILL_AMT3)) + geom_density(fill=mainPalette[3], colour=mainPalette[3], alpha = 0.2)
-p4 = ggplot(original, aes(x=BILL_AMT4)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2)
-p5 = ggplot(original, aes(x=BILL_AMT5)) + geom_density(fill=mainPalette[5], colour=mainPalette[5], alpha = 0.2)
-p6 = ggplot(original, aes(x=BILL_AMT6)) + geom_density(fill=mainPalette[6], colour=mainPalette[6], alpha = 0.2)
-grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 1)
+p1 = ggplot(original, aes(x=BILL_AMT1)) + geom_density(fill=mainPalette[1], colour=mainPalette[1], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p2 = ggplot(original, aes(x=BILL_AMT2)) + geom_density(fill=mainPalette[2], colour=mainPalette[2], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p3 = ggplot(original, aes(x=BILL_AMT3)) + geom_density(fill=mainPalette[3], colour=mainPalette[3], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p4 = ggplot(original, aes(x=BILL_AMT4)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p5 = ggplot(original, aes(x=BILL_AMT5)) + geom_density(fill=mainPalette[5], colour=mainPalette[5], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p6 = ggplot(original, aes(x=BILL_AMT6)) + geom_density(fill=mainPalette[6], colour=mainPalette[6], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2)
 ```
 
-The bill payment amounts have negative values, significant amounts that reach at times **thens of thousands** of NT dollars! The negative amount on the credit card bill statements happen when a card holder overpaid his/her bill or were issued a credit after he/she already paid the bill. But some amounts way too high?..
-Noticeably the bill amounts have very long tails. They average in tens of thousand TN dollars, hovering around 50,000 dollars or so (see Table: \ref{tab:dataset_summary}). Thus it makes the negative bill amounts more plausible.
+The bill payment amounts have negative values, significant amounts that reach at times **thens of thousands** of NT dollars! The negative amount on the credit card bill statements happen when a card holder overpaid his/her bill or were issued a credit after he/she already paid the bill. 
+
+Noticeably the bill amounts have very long tails. They average in tens of thousands of TN dollars, hovering around 50,000 dollars or so on average (see Table: \ref{tab:dataset_summary}). Thus it makes the negative bill amounts we previously observed more plausible.
 
 The last group of the features is the client monthly payments. The data maintained in those columns appears to be integral (see Table: \ref{tab:dataset_summary}). Let's see how the customer payments are distributed. We employ normal and log-scaled visualization for better presentation. 
 ```{r payment_density, echo=FALSE, fig.align="center", fig.cap="Customer Payment Amount Distribution for the Last Six Months", warning=FALSE, fig.height=8}
-p1 = ggplot(original, aes(x=PAY_AMT1)) + geom_density(fill=mainPalette[1], colour=mainPalette[1], alpha = 0.2)
-p11 = ggplot(original, aes(x=PAY_AMT1)) + geom_density(fill=mainPalette[1], colour=mainPalette[1], alpha = 0.2)  + scale_x_log10()
-p2 = ggplot(original, aes(x=PAY_AMT2)) + geom_density(fill=mainPalette[2], colour=mainPalette[2], alpha = 0.2)
-p22 = ggplot(original, aes(x=PAY_AMT2)) + geom_density(fill=mainPalette[2], colour=mainPalette[2], alpha = 0.2) + scale_x_log10()
-p3 = ggplot(original, aes(x=PAY_AMT3)) + geom_density(fill=mainPalette[3], colour=mainPalette[3], alpha = 0.2)
-p33 = ggplot(original, aes(x=PAY_AMT3)) + geom_density(fill=mainPalette[3], colour=mainPalette[3], alpha = 0.2) + scale_x_log10()
-p4 = ggplot(original, aes(x=PAY_AMT4)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2)
-p44 = ggplot(original, aes(x=PAY_AMT4)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2) + scale_x_log10()
-p5 = ggplot(original, aes(x=PAY_AMT5)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2)
-p55 = ggplot(original, aes(x=PAY_AMT5)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2) + scale_x_log10()
-p6 = ggplot(original, aes(x=PAY_AMT6)) + geom_density(fill=mainPalette[6], colour=mainPalette[6], alpha = 0.2)  
-p66 = ggplot(original, aes(x=PAY_AMT6)) + geom_density(fill=mainPalette[6], colour=mainPalette[6], alpha = 0.2)  + scale_x_log10()
+p1 = ggplot(original, aes(x=PAY_AMT1)) + geom_density(fill=mainPalette[1], colour=mainPalette[1], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p11 = ggplot(original, aes(x=PAY_AMT1)) + geom_density(fill=mainPalette[1], colour=mainPalette[1], alpha = 0.2)  + scale_x_log10()+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p2 = ggplot(original, aes(x=PAY_AMT2)) + geom_density(fill=mainPalette[2], colour=mainPalette[2], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p22 = ggplot(original, aes(x=PAY_AMT2)) + geom_density(fill=mainPalette[2], colour=mainPalette[2], alpha = 0.2) + scale_x_log10()+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p3 = ggplot(original, aes(x=PAY_AMT3)) + geom_density(fill=mainPalette[3], colour=mainPalette[3], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p33 = ggplot(original, aes(x=PAY_AMT3)) + geom_density(fill=mainPalette[3], colour=mainPalette[3], alpha = 0.2) + scale_x_log10()+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p4 = ggplot(original, aes(x=PAY_AMT4)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p44 = ggplot(original, aes(x=PAY_AMT4)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2) + scale_x_log10()+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p5 = ggplot(original, aes(x=PAY_AMT5)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2)+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p55 = ggplot(original, aes(x=PAY_AMT5)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2) + scale_x_log10()+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p6 = ggplot(original, aes(x=PAY_AMT6)) + geom_density(fill=mainPalette[6], colour=mainPalette[6], alpha = 0.2)  +
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+p66 = ggplot(original, aes(x=PAY_AMT6)) + geom_density(fill=mainPalette[6], colour=mainPalette[6], alpha = 0.2)  + scale_x_log10()+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
 grid.arrange(p1,p11,p2,p22,p3,p33,p4,p44,p5,p55,p6,p66, ncol = 2)
 ```
 
+The pay amounts mirror in the distribution the bill amounts, which is expected. The charts have very long tails which imply that the amounts the card holdrs pay, very greatly. Most likely the payments that are way outside of the normal distribution curve are lump sum payments. More often than not the clients pay between 1000 and 10000 dollars monthly, which is still way below the average bill amount. This finding and the payment status statistics (see Figure: \ref{fig:payment_status}) make us believe that the majority of the credit card hodlders do have quite significant debt, despite the good standing. This hyposesys also explains the distribution of the payments. To keep the debt growth in check the customers pay lump sums whenever they accumulate some saving. Let's plot the delta between the bill amounts and the payment amounts to support our theory. Figure \ref{fig:payment_delta_density}
+```{r payment_delta_density, echo=FALSE, fig.align="center", fig.cap="Customer Bill/Payment Amount Delta for Six Months", warning=FALSE}
+tmp = original %>% mutate(BILL_PAY_DELTA1 = BILL_AMT1 - PAY_1,BILL_PAY_DELTA2 = BILL_AMT2 - PAY_2,BILL_PAY_DELTA3 = BILL_AMT3 - PAY_3,BILL_PAY_DELTA4 = BILL_AMT4 - PAY_4,BILL_PAY_DELTA5 = BILL_AMT5 - PAY_5, BILL_PAY_DELTA6 = BILL_AMT6 - PAY_6 ) %>% dplyr::select(BILL_PAY_DELTA1,BILL_PAY_DELTA2,BILL_PAY_DELTA3,BILL_PAY_DELTA4,BILL_PAY_DELTA5, BILL_PAY_DELTA6)
+tmp = melt(tmp)
+
+ggplot(tmp, aes(x=value, fill=variable, colour = variable)) + 
+  geom_density(alpha = 0.1)  + scale_x_log10()+
+ theme(axis.text.y=element_blank(),  axis.ticks.y=element_blank(), axis.title.y=element_blank())
+rm(p1,p2,p3,p4,p5,p6,p11,p22,p33,p44,p55,p66,tmp)
+```
+
+### Data Transformation
+
+Before we proceed further we are going to clean the data set as described in the previous paragraph, namely:
+
+* We will remove *Customer ID* column
+* We assign code **4** - **Other** to the *EDUCATION* column values that fall out of the declared code range (1:4)
+```{r}
+original$EDUCATION = with(original, ifelse(EDUCATION == 0 | EDUCATION == 5 | EDUCATION == 6 , 4, EDUCATION))
+data = dplyr::select(original, -ID)
+data %>% filter(EDUCATION == 0 | EDUCATION >4) %>% summarise(COUNT=n())
+```
 
 
-### Data correlation and other observations
+### Data Correlation and Principal Component Analysis
+
+In this section of our study we continue exploring the relations between various features of the data set. We put stress on finding the correlatated features, the coreelation between the features and the target label. We also are going to apply principal componenet analysis (PCA) to understand wich attributes of the data set exlain most variance of the original data. If our findings are fruitful we may design a model that requires smaller number of the input parameters without sacrificing the predictive power of the model.
+
+Let's plot the correlation matrix first.
+```{r corr_plot, echo=FALSE, fig.align="center", fig.cap="Data Correlation"}
+corrplot(cor(select_if(data, is.numeric), use="pairwise.complete.obs"),
+         method="color", type="upper",order="hclust", col = mainPalette, number.cex = .4, tl.cex=0.5,
+         addCoef.col = "black", tl.col="black", tl.srt=45,sig.level = 0.4, insig = "blank", diag=FALSE )
+```
+
+The correlation matrix does not yield any surprises (see Figure: \ref{fig:corr_plot})). Bill payment amounts exhsibit higher correltation as well as the payment status gorup. This does not give us much. The target label has no correlation with any other feature. We proceed with the PCA analysis now. We scale and center the data to achieve meaningful result. We also remove the target feature from the PCA computation. We are going to retain the 15 top components.
+
+```{r pca, echo=FALSE}
+dataNOL = dplyr::select(data,-DEFAULT)
+dataNOL.pca = prcomp(dataNOL, center = T, scale. = T,  rank. = 15)
+print(get_eigenvalue(dataNOL.pca))
+```
+
+Good news! The top 10 components explain 83% of the data variance. Let's review what the top four components are made of.
+
+```{r ind_contr, echo=FALSE, fig.align="center", fig.cap="Feature Contribution to the Top Four Components", warning=FALSE}
+p1 = fviz_contrib( dataNOL.pca, choice = "var", axes = 1, title = "Comp 1", fill = mainPalette[1], color = mainPalette[1])+ theme(text = element_text(size = 6),
+         axis.title = element_text(size = 6),
+         axis.text = element_text(size = 6)
+         )
+p2 = fviz_contrib( dataNOL.pca, choice = "var", axes = 2, title = "Comp 2", fill = mainPalette[2], color = mainPalette[2])+ theme(text = element_text(size = 6),
+         axis.title = element_text(size = 6),
+         axis.text = element_text(size = 6)
+         )
+p3 = fviz_contrib( dataNOL.pca, choice = "var", axes = 3, title = "Comp 3", fill = mainPalette[3], color = mainPalette[3])+ theme(text = element_text(size = 6),
+         axis.title = element_text(size = 6),
+         axis.text = element_text(size = 6)
+         )
+p4 = fviz_contrib( dataNOL.pca, choice = "var", axes = 4, title = "Comp 4", fill = mainPalette[4], color = mainPalette[4]) + theme(text = element_text(size = 6),
+         axis.title = element_text(size = 6),
+         axis.text = element_text(size = 6)
+         )
+grid.arrange(p1,p2,p3,p4)
+```
+
+The red dashed line on the graph (see Figure: \ref{fig:ind_contr}) indicates the expected average contribution. If the contribution of the variables were uniform, the expected value would about 4.3%. For a given component, a variable with a contribution larger than this cutoff could be considered as important in contributing to the component. The PCA analysis supports the correlation matrix (Figure: \ref{fig:corr_plot}) in a sense that the bill amounts and the pay statuses are highly correlated and are subject to the dimentionality reduction due to the redundancy. 
+
+```{r}
+fviz_pca_ind(dataNOL.pca,geom.ind = "point", col.ind = as.factor(data$DEFAULT),
+             palette = c(mainPalette[1],mainPalette[6]), addEllipses = F,
+             legend.title = "Default")
+```
+ 
 
 #### Takeaways from Data Exploration Excersize
 
