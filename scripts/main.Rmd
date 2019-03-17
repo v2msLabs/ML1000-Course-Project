@@ -361,31 +361,69 @@ ccTest3 <- factorizeData(ccTest2)
 
 
 ## Random Forest Model
+Random Forest is also considered as a very handy and easy to use algorithm, because it’s default hyperparameters often produce a good prediction result. Random Forest adds additional randomness to the model, while growing the trees. Instead of searching for the most important feature while splitting a node, it searches for the best feature among a random subset of features. This results in a wide diversity that generally results in a better model. The main limitation of Random Forest is that a large number of trees can make the algorithm to slow and ineffective for real-time predictions. In general, these algorithms are fast to train, but quite slow to create predictions once they are trained.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ctrl = trainControl(method = "cv", number = 3,  
+    # Estimate class probabilities
+    classProbs = T,
+    # Evaluate performance using the following function
+    summaryFunction = twoClassSummary)
+ptm_rf <- proc.time()
+#randomForestModel = caret::train(as.formula('DEFAULT ~ .'), 
+   #data = ccTrain3, method = "rf", metric="ROC", trControl = ctrl)
+#proc.time() - ptm_rf
+#pred.randomForestModel.prob = predict(randomForestModel, newdata = ccTest3, type="prob")
+#pred.randomForestModel.raw = predict(randomForestModel, newdata = ccTest3 )
+
+#roc.randomForestModel = pROC::roc(ccTest3$DEFAULT,  
+                                  #as.vector(ifelse(pred.randomForestModel.prob[,"yes"] >0.5, 1,0)) )
+#auc.randomForestModel = pROC::auc(roc.randomForestModel)
+#randomForestModel
+```
+```{r}
+#confusionMatrix(data = pred.randomForestModel.raw, ccTest3$DEFAULT)
+```
+```{r plot_rf_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Random Forest Model AUC and ROC Curve", out.width="1.1\\linewidth"}
+#plot.roc(roc.randomForestModel, print.auc = T, auc.polygon = T, col = mainPalette[3] , print.thres = "best" )
+```
+```{r include=FALSE}
+#rm(ctrl)
+```
+
 
 
 ## Logistic Regression Model
+Logistic regression is an efficient, interpretable and accurate method, which fits quickly with minimal tuning. Logistic regression prediction accuracy will benefit if the data is close to Gaussian distribution. Thus we apply addition transformation to the training data set. We will also be employing 5-fold cross-validation resampling procedure to improve the model.
+```{r include=FALSE, message=FALSE, warning=FALSE}
+set.seed(123)
 
-model.0 <- glm(DEFAULT~ .,data=ccTrain3, family=binomial(link="logit"))
-summerizeModel(model.0)
+ctrl = trainControl(
+  # 5-fold CV
+  method="cv", number = 5,  
+  savePredictions = T)
+  
+logRegModel = caret::train(as.formula('DEFAULT ~ .'),
+        data = ccTrain3, method="glm", family = binomial(link = "logit"), 
+        trControl = ctrl, preProc = c("BoxCox"))
 
-checkModel <- model.0
-pred <- predict(checkModel, newdata = ccValidate3, type="response")
-pR2(checkModel)
-str(pred) 
-summary(pred)  
-fitted.results <- ifelse(pred > 0.5,1,0) 
-str(fitted.results) 
-summary(fitted.results) 
-missClassifiedError <- mean(fitted.results != ccValidate3$DEFAULT) 
-print(paste('Accuracy',1-missClassifiedError))  
-pr <- ROCR::prediction(pred, ccValidate3$DEFAULT) 
-prf <- ROCR::performance(pr, measure = "tpr", x.measure = "fpr") 
-plot(prf)  
-auc <- ROCR::performance(pr, measure = "auc") 
-#auc <- auc@y.values[[1]] need to work on this from 384 to 387
-#auc   
-#model.result.11 <-  table(fitted.results, ccValidate3$DEFAULT) 
-#model.result.11
+pred.logRegModel.raw = predict(logRegModel, newdata =  ccTest3)
+pred.logRegModel.prob = predict(logRegModel, newdata =  ccTest3, type = "prob")
+roc.logRegModel = pROC::roc(ccTest3$DEFAULT, as.vector(ifelse(pred.logRegModel.prob[,"1"] >0.5, 1,0)))
+auc.logRegModel = pROC::auc(roc.logRegModel)
+logRegModel
+```
+```{r}
+confusionMatrix(data = pred.logRegModel.raw, ccTest3$DEFAULT)
+```
+
+```{r plot_logReg_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Logistic Regression Model AUC and ROC Curve", out.width="1.1\\linewidth"}
+plot.roc(roc.logRegModel, rint.auc = T, auc.polygon = T, col = mainPalette[4] , print.thres = "best" )
+```
+```{r include=FALSE}
+rm(ctrl)
+
+Confusion matrix and Figure \ref{fig:plot_logReg_ROC} demonstrate the logistic model performance on the balanced data set. Using the proportion of positive data points that are correctly considered as positive (true positives) and the proportion of negative data points that are mistakenly considered as positive (false negative), we generated a graphic that shows the trade off between the rate at which the model correctly predicts the rain tomorrow with the rate of incorrectly predicting the rain. The value around 0.80 indicates that the model does a good job in discriminating between the two categories.```
 
 
 
