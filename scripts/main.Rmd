@@ -238,7 +238,7 @@ p66 = ggplot(original, aes(x=PAY_AMT6)) + geom_density(fill=mainPalette[6], colo
 grid.arrange(p1,p11,p2,p22,p3,p33,p4,p44,p5,p55,p6,p66, ncol = 2)
 ```
 
-The pay amounts mirror in the distribution the bill amounts, which is expected. The charts have very long tails which imply that the amounts the card holdrs pay, very greatly. Most likely the payments that are way outside of the normal distribution curve are lump sum payments. More often than not the clients pay between 1000 and 10000 dollars monthly, which is still way below the average bill amount. This finding and the payment status statistics (see Figure: \ref{fig:payment_status}) make us believe that the majority of the credit card hodlders do have quite significant debt, despite the good standing. This hyposesys also explains the distribution of the payments. To keep the debt growth in check the customers pay lump sums whenever they accumulate some saving. Let's plot the delta between the bill amounts and the payment amounts to support our theory. Figure \ref{fig:payment_delta_density}
+The pay amounts mirror in the distribution the bill amounts, which is expected. The charts have very long tails which imply that the amounts the card holders pay, very greatly. Most likely the payments that are way outside of the normal distribution curve are lump sum payments. More often than not the clients pay between 1000 and 10000 dollars monthly, which is still way below the average bill amount. This finding and the payment status statistics (see Figure: \ref{fig:payment_status}) make us believe that the majority of the credit card holders do have quite significant debt, despite the good standing. This hypotheses also explains the distribution of the payments. To keep the debt growth in check the customers pay lump sums whenever they accumulate some saving. Let's plot the delta between the bill amounts and the payment amounts to support our theory. Figure \ref{fig:payment_delta_density}
 ```{r payment_delta_density, echo=FALSE, fig.align="center", fig.cap="Customer Bill/Payment Amount Delta for Six Months", warning=FALSE}
 tmp = original %>% mutate(BILL_PAY_DELTA1 = BILL_AMT1 - PAY_1,BILL_PAY_DELTA2 = BILL_AMT2 - PAY_2,BILL_PAY_DELTA3 = BILL_AMT3 - PAY_3,BILL_PAY_DELTA4 = BILL_AMT4 - PAY_4,BILL_PAY_DELTA5 = BILL_AMT5 - PAY_5, BILL_PAY_DELTA6 = BILL_AMT6 - PAY_6 ) %>% dplyr::select(BILL_PAY_DELTA1,BILL_PAY_DELTA2,BILL_PAY_DELTA3,BILL_PAY_DELTA4,BILL_PAY_DELTA5, BILL_PAY_DELTA6)
 tmp = melt(tmp)
@@ -264,7 +264,7 @@ data %>% filter(EDUCATION == 0 | EDUCATION >4) %>% summarise(COUNT=n())
 
 ### Data Correlation and Principal Component Analysis
 
-In this section of our study we continue exploring the relations between various features of the data set. We put stress on finding the correlatated features, the coreelation between the features and the target label. We also are going to apply principal componenet analysis (PCA) to understand wich attributes of the data set exlain most variance of the original data. If our findings are fruitful we may design a model that requires smaller number of the input parameters without sacrificing the predictive power of the model.
+In this section of our study we continue exploring the relations between various features of the data set. We put stress on finding the correlated features, the correlation between the features and the target label. We also are going to apply principal component analysis (PCA) to understand which attributes of the data set explain most variance of the original data. If our findings are fruitful we may design a model that requires smaller number of the input parameters without sacrificing the predictive power of the model.
 
 Let's plot the correlation matrix first.
 ```{r corr_plot, echo=FALSE, fig.align="center", fig.cap="Data Correlation"}
@@ -273,7 +273,7 @@ corrplot(cor(select_if(data, is.numeric), use="pairwise.complete.obs"),
          addCoef.col = "black", tl.col="black", tl.srt=45,sig.level = 0.4, insig = "blank", diag=FALSE )
 ```
 
-The correlation matrix does not yield any surprises (see Figure: \ref{fig:corr_plot})). Bill payment amounts exhsibit higher correltation as well as the payment status gorup. This does not give us much. The target label has no correlation with any other feature. We proceed with the PCA analysis now. We scale and center the data to achieve meaningful result. We also remove the target feature from the PCA computation. We are going to retain the 15 top components.
+The correlation matrix does not yield any surprises (see Figure: \ref{fig:corr_plot})). Bill payment amounts exhibit higher correlation as well as the payment status group. This does not give us much. The target label has no correlation with any other feature. We proceed with the PCA analysis now. We scale and center the data to achieve meaningful result. We also remove the target feature from the PCA computation. We are going to retain the 15 top components.
 
 ```{r pca, echo=FALSE}
 dataNOL = dplyr::select(data,-DEFAULT)
@@ -281,7 +281,7 @@ dataNOL.pca = prcomp(dataNOL, center = T, scale. = T,  rank. = 15)
 print(get_eigenvalue(dataNOL.pca))
 ```
 
-Good news! The top 10 components explain 83% of the data variance. Let's review what the top four components are made of.
+Good news! The **top 10 components explain 83%** of the data variance. Let's review what the top four components are made of.
 
 ```{r ind_contr, echo=FALSE, fig.align="center", fig.cap="Feature Contribution to the Top Four Components", warning=FALSE}
 p1 = fviz_contrib( dataNOL.pca, choice = "var", axes = 1, title = "Comp 1", fill = mainPalette[1], color = mainPalette[1])+ theme(text = element_text(size = 6),
@@ -303,16 +303,31 @@ p4 = fviz_contrib( dataNOL.pca, choice = "var", axes = 4, title = "Comp 4", fill
 grid.arrange(p1,p2,p3,p4)
 ```
 
-The red dashed line on the graph (see Figure: \ref{fig:ind_contr}) indicates the expected average contribution. If the contribution of the variables were uniform, the expected value would about 4.3%. For a given component, a variable with a contribution larger than this cutoff could be considered as important in contributing to the component. The PCA analysis supports the correlation matrix (Figure: \ref{fig:corr_plot}) in a sense that the bill amounts and the pay statuses are highly correlated and are subject to the dimentionality reduction due to the redundancy. 
+The red dashed line on the graph (see Figure: \ref{fig:ind_contr}) indicates the expected average contribution. If the contribution of the variables were uniform, the expected value would about 4.3%. For a given component, a variable with a contribution larger than this cutoff could be considered as important in contributing to the component. The PCA analysis supports the correlation matrix (Figure: \ref{fig:corr_plot}) in a sense that the bill amounts and the pay statuses are highly correlated and are subject to the dimentionality reduction due to the redundancy. So as we can see the first component is largely being dominated by the bill amounts and pay statuses. The second one mainly includes the payment status features and the credit card limit. The demographic features and the amount paid dominate the third and fourth components. 
 
-```{r}
-fviz_pca_ind(dataNOL.pca,geom.ind = "point", col.ind = as.factor(data$DEFAULT),
-             palette = c(mainPalette[1],mainPalette[6]), addEllipses = F,
-             legend.title = "Default")
+It would be very interesting to see how the top two components look like in the context of the target label. Very well, Figure: \ref{fig:ind_label} shows that there is no clear separation between component one and two. As the previous chart highlighted (see Figure: \ref{fig:ind_contr}) this shall be expected since the top two components largely comprise bill payments and pay statuses. We also observe two linear formations: one is located in the first quadrant; green (no default). The second formation is located in the fourth quadrant; it peppered with the red color that denotes the default green. to understand better what those formations are we will plot the feature vectors in the context of the component one and two.
+
+```{r vars, echo=FALSE, fig.align="center", fig.cap="Feature contribution to the Top Two Componenets", warning=FALSE, out.width = "80%"}
+fviz_pca_ind(dataNOL.pca,geom.ind = "point", col.ind = as.factor(data$DEFAULT), alpha.ind = 0.7,
+             title = "", palette = c(mainPalette[6],mainPalette[1]), addEllipses = T,
+             legend.title = "Default (Y-1/N-0)")
 ```
  
+```{r ind_label, echo=FALSE, fig.align="center", fig.cap="Components and Feature Contribution in the Context of Target Label", warning=FALSE, out.width = "80%"}
+fviz_pca_var(dataNOL.pca,col.var = "coord", gradient.cols = mainPalette,
+             repel =T, legend.title = "Contribution", title ="")
+```
+The plot submitted above clearly shows that the biggest contributor to the first quadrant is a bill amount group. And the contributors to the fourth quadrant are payments statuses.
 
-#### Takeaways from Data Exploration Excersize
+#### Takeaways from Data Exploration Excersize  
+
+We have concluded the data exploration study. There are a few major points we would like to highlight. They are:
+
+* The majory of the credit card holders maintain good standing (see Figure: \ref{fig:payment_status}). 
+* The clients do maintain debt. On regular basis they pay the amount that meets the minimal required payment but less then the bill amount (see Figure \ref{fig:payment_delta_density}). 
+* The clients tend to reduce the amount of debt paying the outstanding balance in lump sums (Figure: \ref{fig:payment_density}).
+* Demographically married and single people represented almost equally, women are represented better than men. Majority of the credit card holders have a university degree. The vast majority of the clients are between 25 and 50 year old.
+* Principal component analysis showed that we can reduce the number of the features to 10 - 12 sustaining the data variance coverage at about **85%**. The top principal components comprise mainly bill amounts and pay statuses (Figure: \ref{fig:ind_contr}). The components do not have clear separation and affect equally the target label (Figure: \ref{fig:vars}).
 
 
 ## Data Preparation
