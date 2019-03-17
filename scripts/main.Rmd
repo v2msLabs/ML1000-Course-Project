@@ -36,6 +36,8 @@ library(summarytools) # nicer data summary stats
 library(xtable) # nice table formats
 library(reshape) # dataframe transformation
 library(corrplot) # nice correlation plots
+library(pscl) #used when calculating pseudo R2 for logistic models
+
 # Clean all variables that might be left by other script to avoid collusion
 rm(list=ls(all=T))
 source('utils.R') # supplementary code
@@ -316,6 +318,30 @@ fviz_pca_ind(dataNOL.pca,geom.ind = "point", col.ind = as.factor(data$DEFAULT),
 
 
 ## Data Preparation
+trainIdx1 <- caret::createDataPartition(y=data[[24]], p=0.7, list=FALSE)
+trainData1 <- data[trainIdx1,]
+
+testLRData <-data[-trainIdx1,]
+
+trainIdx2 <- caret::createDataPartition(y=trainData1[[24]], p=0.6, list=FALSE)
+
+trainLRData <- trainData1[trainIdx2,]
+validationLRData <- trainData1[-trainIdx2,]
+
+
+str(trainLRData)
+
+ccTrain <- factorizeData(trainLRData)
+ccTrain2 <- normalizeData(ccTrain)
+ccTrain3 <- factorizeData(ccTrain2)
+
+ccValidate <- factorizeData(validationLRData)
+ccValidate2 <- normalizeData(ccValidate)
+ccValidate3 <- factorizeData(ccValidate2)
+
+ccTest <- factorizeData(testLRData)
+ccTest2 <- normalizeData(ccTest)
+ccTest3 <- factorizeData(ccTest2)
 
 
 ### Data Imputing
@@ -338,6 +364,30 @@ fviz_pca_ind(dataNOL.pca,geom.ind = "point", col.ind = as.factor(data$DEFAULT),
 
 
 ## Logistic Regression Model
+
+model.0 <- glm(DEFAULT~ .,data=ccTrain3, family=binomial(link="logit"))
+summerizeModel(model.0)
+
+checkModel <- model.0
+pred <- predict(checkModel, newdata = ccValidate3, type="response")
+pR2(checkModel)
+str(pred) 
+summary(pred)  
+fitted.results <- ifelse(pred > 0.5,1,0) 
+str(fitted.results) 
+summary(fitted.results) 
+missClassifiedError <- mean(fitted.results != ccValidate3$DEFAULT) 
+print(paste('Accuracy',1-missClassifiedError))  
+pr <- ROCR::prediction(pred, ccValidate3$DEFAULT) 
+prf <- ROCR::performance(pr, measure = "tpr", x.measure = "fpr") 
+plot(prf)  
+auc <- ROCR::performance(pr, measure = "auc") 
+#auc <- auc@y.values[[1]] need to work on this from 384 to 387
+#auc   
+#model.result.11 <-  table(fitted.results, ccValidate3$DEFAULT) 
+#model.result.11
+
+
 
 
 ## Model Comparison
