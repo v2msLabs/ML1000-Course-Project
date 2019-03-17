@@ -28,17 +28,28 @@ library(gridExtra) # arrange grids
 library(dplyr)  # data manipuation
 library(corrplot) # correlation matrix plotting/printing
 library(pROC) # to measure model performance
-library(RColorBrewer) # color palettes
 library(party) # classification tree
 library(klaR) # naive bayes
 library(caret) # predictive models
 library(factoextra) # advanced plots
+library(summarytools) # nicer data summary stats
+library(xtable) # nice table formats
 
 # Clean all variables that might be left by other script to avoid collusion
-rm(list=ls(all=TRUE))
+rm(list=ls(all=T))
+source('utils.R') # supplementary code
+
+# set summarytools global parameters
+st_options(plain.ascii = F,       # This is very handy in all Rmd documents
+      style = "grid",        # This too
+      footnote = NA,             # Avoids footnotes which would clutter the result
+      subtitle.emphasis = F,  # This is a setting to experiment with - according to
+      dfSummary.graph.col = F,
+      tmp.img.dir = "~"
+)
 
 # pick palettes
-mainPalette = brewer.pal(8,"Dark2")
+mainPalette = ggplotColours()
 # set a sample size
 SampleSize = 30000
 ```
@@ -46,7 +57,12 @@ SampleSize = 30000
 ```{r global_options, include=FALSE}
 # make the images flow nicely
 knitr::opts_chunk$set(fig.pos = 'H', echo = T,comment = NA, prompt = F, 
-                      cache = F, warning = F, message = F,  fig.align="center")
+                      cache = F, warnings = F, message = F,  fig.align="center")
+
+# set xtable properties for the project
+options(xtable.floating = T)
+options(xtable.timestamp = "")
+options(xtable.comment = F)
 ```
 
 
@@ -66,20 +82,20 @@ We are also motivated to unearth, if possible, any trend that might shed light o
 
 # Data Analysis
 
-This research employs the data set sourced from [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients). This real-life data comprises 30000 observations of the credit card payment history of Taiwan consumers.
+This research employs the data set sourced from [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients). This real-life data comprises 30000 observations of the credit card payment history of Taiwanese consumers.
 
 
 ## Data Dictionary
 
 Column Name            | Column Description  
------------------------| ------------------------------------------------------  
+-----------------------| --------------------------------------------------------------------------  
 ID                     | Customer ID
 LIMIT_BAL              | Amount of the given credit (NT dollar): it includes both the individual consumer credit and his/her family (supplementary) credit
 SEX                    | Gender (1 = male; 2 = female).
-EDUCATION              | Education (1 = graduate school; 2 = university; 3 = high school; 4 = others).
-MARRIAGE               | Marital status (1 = married; 2 = single; 3 = others). 
+EDUCATION              | Education (1 = graduate school; 2 = university; 3 = high school; 4 = others)
+MARRIAGE               | Marital status (1 = married; 2 = single; 3 = divorced; 0 - other)
 AGE                    | Age (year)
-PAY_1                  | PAY_1 - PAY_6 are payment statuses over a course of the last six months, where  -1 = pay duly. Positive numbrs denote payment delay in months. PAY_0  - Payment status in September
+PAY_1                  | PAY_1 - PAY_6 are payment statuses over a course of the last six months, where -2: Balance paid in full and no transactions this period (we may refer to this credit card account as having been 'inactive' this period). -1: Balance paid in full, but account has a positive balance at end of period due to recent transactions for which payment has not yet come due; 0: Customer paid the minimum due amount, but not the entire balance. I.e., the customer paid enough for their account to remain in good standing, but did revolve a balance. Positive numbers denote payment delay in months. For example 1 = payment delay for one month; 2 = payment delay for two months; . . .; 9 = payment delay for nine months and above. PAY_1  - Payment status in September
 PAY_2                  | Payment status in August
 PAY_3                  | Payment status in July
 PAY_4                  | Payment status in June
@@ -97,16 +113,110 @@ PAY_AMT3               | Amount paid in July (June bill)
 PAY_AMT4               | Amount paid in June (May bill)
 PAY_AMT5               | Amount paid in May (April bill)
 PAY_AMT6               | Amount paid in April (March bill)
-**DEFAULT_NEXT_MONTH** | **Target label that denotes whether the client paid next bill or did not (Yes = 1, No = 0)** 
+**DEFAULT**            | **Target label that denotes whether the client paid the next month bill (0) or did not (1)** 
 
 
 ## Data Exploration
 
-```{r}
+We start our research with the data exploration. 
+
+```{r dataset_summary, results="asis", echo = FALSE}
 original = read.csv("../data/default-cc.csv", header = T, 
                 na.strings = c("NA","","#NA"),sep=",")
-str(original)
+print(dfSummary(original, valid.col = F, max.distinct.values = 3, heading = F, method = "render"),
+       caption = "\\label{tab:dataset_summary} Credit Card Payment Data Summary", scalebbox = .9)
 ```
+
+Table \ref{tab:dataset_summary} describes main statistical parameters of each column. It also outputs the values of the binary features. The first thing that jumps at us is that the data set has no missing data! We shall note that our target feature is not balanced. Almost **80%** of the clients do pay on time. Secondly female customers make **60%** of the data set. **Customer ID** column, as usual, will be dropped since it presents no analytical value. Here is a look at the data sample.
+
+```{r data_head, results='asis', echo=FALSE}
+print(xtable(original[1:12,1:15]), include.rownames = F, scalebox=.6)
+print (xtable(original[1:12,13:23],
+  caption = "\\label{tab:dataset_head} Credit Card Payment Data Sample"), include.rownames = F,
+  scalebox = .6)
+```
+
+Let's review demographic characteristics of the customer base, namely: *EDUCATION*, *MARITAL STATUS* and *AGE*. We immediately can observe some deficiencies in the data quality (Figure: \ref{fig:demographics}). As we see the majority of the credit card users have university degree. But there are three groups which are not supposed to be in the data set: **Unknown** - code **0**, **Unknown5** - code **5** and **Unkown6** - code **6**. We will assign these customers to the **Other** group, since the description for the aforementioned codes is not provided. 
+
+Number of single people is slightly higher than the number of the married ones. 
+
+Majority of the credit card holders are people between age of 25 and 50, which does not come as a surprise (Figure: \ref{fig:demographics})... Let's see if the *AGE* feature has outliers.
+```{r}
+print(original %>% filter(AGE < 18 || AGE > 100) %>% summarise(COUNT = n()))
+```
+The *AGE* feature maintains perfect data.
+
+```{r demographics, fig.align="center", fig.cap="Customer Demographics", fig.height=8, echo=FALSE}
+education = original %>%
+  group_by(EDUCATION = factor(EDUCATION, labels = c("Unkown","Graduate School","University","High School","Other","Unknown 5","Unknown 6")))  %>%
+  summarise(COUNT = n())
+p1 = ggplot(education,aes(x=EDUCATION, y = COUNT, fill = EDUCATION)) + 
+      geom_bar(stat = "identity", alpha = 0.7) +  theme(axis.text.x=element_blank(),
+      axis.ticks.x=element_blank())
+
+marriage = original %>%
+  group_by(MARRIAGE = factor(MARRIAGE, labels = c("Other","Married","Single","Divorsed")))  %>%
+  summarise(COUNT = n())
+p2 = ggplot(marriage,aes(x=MARRIAGE, y = COUNT, fill = MARRIAGE)) + 
+      geom_bar(stat = "identity", alpha = 0.7) +  theme(axis.text.x=element_blank(),
+      axis.ticks.x=element_blank())
+
+p3 =  ggplot(original,aes(x=AGE)) + 
+      geom_bar(stat = "count", alpha = 0.7, fill=mainPalette[2], colour=mainPalette[2]) 
+grid.arrange(p1,p2,p3)
+```
+
+The next group of features we are going to explore is payment statuses. As per the data dictionary the payment statuses are supposed to have the status codes in the following range: **-2 : 9**. Let's verify the data integrity of the features.
+
+
+```{r payment_status, fig.align="center", fig.cap="Customer Payment Statuses for the Last Six Months", echo=FALSE}
+p1 =  ggplot(original,aes(x=PAY_1)) + 
+      geom_bar(stat = "count", alpha = 0.7, fill=mainPalette[1], colour=mainPalette[1])
+p2 = ggplot(original,aes(x=PAY_2)) + 
+      geom_bar(stat = "count", alpha = 0.7, fill=mainPalette[2], colour=mainPalette[2])
+p3 = ggplot(original,aes(x=PAY_3)) + 
+      geom_bar(stat = "count", alpha = 0.7, fill=mainPalette[3], colour=mainPalette[3])
+p4 = ggplot(original,aes(x=PAY_4)) + 
+      geom_bar(stat = "count", alpha = 0.7, fill=mainPalette[4], colour=mainPalette[4])
+p5 = ggplot(original,aes(x=PAY_5)) + 
+      geom_bar(stat = "count", alpha = 0.7, fill=mainPalette[5], colour=mainPalette[5])
+p6 = ggplot(original,aes(x=PAY_6)) + 
+      geom_bar(stat = "count", alpha = 0.7, fill=mainPalette[6], colour=mainPalette[6])
+grid.arrange(p1,p2,p3,p4,p5,p6)
+```
+As we have already noticed many of the credit card holders pay duly, codes: *-2 and -1* (see Figure: \ref{fig:payment_status}). Majority of the customers do maintain good standing. Noticeably though they **paid the required minimum or more but not the full balance** (code *0*). There is a rather significant group that falls behind with the payment by one or two months.
+The next group of features are the bill amounts for the last six months.
+```{r bill_density, fig.align="center", fig.cap="Customer Bill Amount Distribution for the Last Six Months", echo=FALSE, fig.height=10}
+p1 = ggplot(original, aes(x=BILL_AMT1)) + geom_density(fill=mainPalette[1], colour=mainPalette[1], alpha = 0.2)
+p2 = ggplot(original, aes(x=BILL_AMT2)) + geom_density(fill=mainPalette[2], colour=mainPalette[2], alpha = 0.2)
+p3 = ggplot(original, aes(x=BILL_AMT3)) + geom_density(fill=mainPalette[3], colour=mainPalette[3], alpha = 0.2)
+p4 = ggplot(original, aes(x=BILL_AMT4)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2)
+p5 = ggplot(original, aes(x=BILL_AMT5)) + geom_density(fill=mainPalette[5], colour=mainPalette[5], alpha = 0.2)
+p6 = ggplot(original, aes(x=BILL_AMT6)) + geom_density(fill=mainPalette[6], colour=mainPalette[6], alpha = 0.2)
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 1)
+```
+
+The bill payment amounts have negative values, significant amounts that reach at times **thens of thousands** of NT dollars! The negative amount on the credit card bill statements happen when a card holder overpaid his/her bill or were issued a credit after he/she already paid the bill. But some amounts way too high?..
+Noticeably the bill amounts have very long tails. They average in tens of thousand TN dollars, hovering around 50,000 dollars or so (see Table: \ref{tab:dataset_summary}). Thus it makes the negative bill amounts more plausible.
+
+The last group of the features is the client monthly payments. The data maintained in those columns appears to be integral (see Table: \ref{tab:dataset_summary}). Let's see how the customer payments are distributed. We employ normal and log-scaled visualization for better presentation. 
+```{r payment_density, echo=FALSE, fig.align="center", fig.cap="Customer Payment Amount Distribution for the Last Six Months", warning=FALSE, fig.height=8}
+p1 = ggplot(original, aes(x=PAY_AMT1)) + geom_density(fill=mainPalette[1], colour=mainPalette[1], alpha = 0.2)
+p11 = ggplot(original, aes(x=PAY_AMT1)) + geom_density(fill=mainPalette[1], colour=mainPalette[1], alpha = 0.2)  + scale_x_log10()
+p2 = ggplot(original, aes(x=PAY_AMT2)) + geom_density(fill=mainPalette[2], colour=mainPalette[2], alpha = 0.2)
+p22 = ggplot(original, aes(x=PAY_AMT2)) + geom_density(fill=mainPalette[2], colour=mainPalette[2], alpha = 0.2) + scale_x_log10()
+p3 = ggplot(original, aes(x=PAY_AMT3)) + geom_density(fill=mainPalette[3], colour=mainPalette[3], alpha = 0.2)
+p33 = ggplot(original, aes(x=PAY_AMT3)) + geom_density(fill=mainPalette[3], colour=mainPalette[3], alpha = 0.2) + scale_x_log10()
+p4 = ggplot(original, aes(x=PAY_AMT4)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2)
+p44 = ggplot(original, aes(x=PAY_AMT4)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2) + scale_x_log10()
+p5 = ggplot(original, aes(x=PAY_AMT5)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2)
+p55 = ggplot(original, aes(x=PAY_AMT5)) + geom_density(fill=mainPalette[4], colour=mainPalette[4], alpha = 0.2) + scale_x_log10()
+p6 = ggplot(original, aes(x=PAY_AMT6)) + geom_density(fill=mainPalette[6], colour=mainPalette[6], alpha = 0.2)  
+p66 = ggplot(original, aes(x=PAY_AMT6)) + geom_density(fill=mainPalette[6], colour=mainPalette[6], alpha = 0.2)  + scale_x_log10()
+grid.arrange(p1,p11,p2,p22,p3,p33,p4,p44,p5,p55,p6,p66, ncol = 2)
+```
+
+
 
 ### Data correlation and other observations
 
