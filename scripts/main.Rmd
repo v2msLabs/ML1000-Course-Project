@@ -327,6 +327,7 @@ We have concluded the data exploration study. There are a few major points we wo
 * The clients do maintain debt. On regular basis they pay the amount that meets the minimal required payment but less then the bill amount (see Figure \ref{fig:payment_delta_density}). 
 * The clients tend to reduce the amount of debt paying the outstanding balance in lump sums (Figure: \ref{fig:payment_density}).
 * Demographically married and single people represented almost equally, women are represented better than men. Majority of the credit card holders have a university degree. The vast majority of the clients are between 25 and 50 year old.
+* The data set is not balanced; the number of the customers in a good standing is much higher than the number of people who defaulted on the next payment.
 * Principal component analysis showed that we can reduce the number of the features to 10 - 12 sustaining the data variance coverage at about **85%**. The top principal components comprise mainly bill amounts and pay statuses (Figure: \ref{fig:ind_contr}). The components do not have clear separation and affect equally the target label (Figure: \ref{fig:vars}).
 
 
