@@ -318,6 +318,7 @@ fviz_pca_ind(dataNOL.pca,geom.ind = "point", col.ind = as.factor(data$DEFAULT),
 
 
 ## Data Preparation
+```{r echo=FALSE}
 trainIdx1 <- caret::createDataPartition(y=data[[24]], p=0.7, list=FALSE)
 trainData1 <- data[trainIdx1,]
 
@@ -342,7 +343,7 @@ ccValidate3 <- factorizeData(ccValidate2)
 ccTest <- factorizeData(testLRData)
 ccTest2 <- normalizeData(ccTest)
 ccTest3 <- factorizeData(ccTest2)
-
+```
 
 ### Data Imputing
 
@@ -362,7 +363,7 @@ It is simple (both intuitively and computationally), fast, performs well with sm
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 # possible tuning grid
 # tuninGrid = data.frame(fL=c(0,0.5,1.0), usekernel = TRUE, adjust=c(0,0.5,1.0))
-set.seed(modelSeed)
+set.seed(876)
 trainDataCopy = mutate(ccTrain3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
 testDataCopy = mutate(ccTest3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
 ctrl = trainControl(method="cv", number = 5, 
@@ -437,7 +438,7 @@ ctrl = trainControl(
   # 5-fold CV
   method="cv", number = 5,  
   savePredictions = T)
-  
+
 logRegModel = caret::train(as.formula('DEFAULT ~ .'),
         data = ccTrain3, method="glm", family = binomial(link = "logit"), 
         trControl = ctrl, preProc = c("BoxCox"))
