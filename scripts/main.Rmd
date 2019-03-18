@@ -354,41 +354,76 @@ ccTest3 <- factorizeData(ccTest2)
 ### Data Upsampling
 
 
-## Decision Tree Model
-
-
 ## Naive Bayes Model
+Naïve Bayes classification is a kind of simple probabilistic classification methods based on Bayes’ theorem with the assumption of independence between features. 
+
+It is simple (both intuitively and computationally), fast, performs well with small amounts of training data, and scales well to large data sets. The greatest weakness of the naïve Bayes classifier is that it relies on an often-faulty assumption of equally important and independent features which results in biased posterior probabilities. Although this assumption is rarely met, in practice, this algorithm works surprisingly well and accurate; however, on average it rarely can compete with the accuracy of advanced tree-based methods (random forests & gradient boosting machines) but is definitely worth having in our toolkit.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# possible tuning grid
+# tuninGrid = data.frame(fL=c(0,0.5,1.0), usekernel = TRUE, adjust=c(0,0.5,1.0))
+set.seed(modelSeed)
+trainDataCopy = mutate(ccTrain3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
+testDataCopy = mutate(ccTest3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
+ctrl = trainControl(method="cv", number = 5, 
+    # Estimate class probabilities
+    classProbs = T,
+    # Evaluate performance using the following function
+    summaryFunction = twoClassSummary)
+
+naiveBayesModel = caret::train(as.formula('DEFAULT ~ .'), 
+   data = trainDataCopy, method = "nb", metric="ROC", trControl = ctrl)
+
+pred.naiveBayesModel.prob = predict(naiveBayesModel, newdata = testDataCopy, type="prob")
+pred.naiveBayesModel.raw = predict(naiveBayesModel, newdata = testDataCopy )
+
+roc.naiveBayesModel = pROC::roc(testDataCopy$DEFAULT, 
+                     as.vector(ifelse(pred.naiveBayesModel.prob[,"yes"] >0.5, 1,0)) )
+auc.naiveBayesModel = pROC::auc(roc.naiveBayesModel)
+naiveBayesModel
+```
+```{r}
+confusionMatrix(data = pred.naiveBayesModel.raw, testDataCopy$DEFAULT)
+```
+```{r plot_nb_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Naive Bayes Model AUC and ROC Curve", out.width="1.1\\linewidth"}
+plot.roc(roc.naiveBayesModel, print.auc = T, auc.polygon = T, col = mainPalette[2] , print.thres = "best" )
+```
+```{r include=FALSE}
+rm(trainDataCopy,testDataCopy,ctrl)
+```
 
 
 ## Random Forest Model
 Random Forest is also considered as a very handy and easy to use algorithm, because it’s default hyperparameters often produce a good prediction result. Random Forest adds additional randomness to the model, while growing the trees. Instead of searching for the most important feature while splitting a node, it searches for the best feature among a random subset of features. This results in a wide diversity that generally results in a better model. The main limitation of Random Forest is that a large number of trees can make the algorithm to slow and ineffective for real-time predictions. In general, these algorithms are fast to train, but quite slow to create predictions once they are trained.
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
+trainDataCopy = mutate(ccTrain3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
+testDataCopy = mutate(ccTest3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
 ctrl = trainControl(method = "cv", number = 3,  
     # Estimate class probabilities
     classProbs = T,
     # Evaluate performance using the following function
     summaryFunction = twoClassSummary)
 ptm_rf <- proc.time()
-#randomForestModel = caret::train(as.formula('DEFAULT ~ .'), 
-   #data = ccTrain3, method = "rf", metric="ROC", trControl = ctrl)
-#proc.time() - ptm_rf
-#pred.randomForestModel.prob = predict(randomForestModel, newdata = ccTest3, type="prob")
-#pred.randomForestModel.raw = predict(randomForestModel, newdata = ccTest3 )
+randomForestModel = caret::train(as.formula('DEFAULT ~ .'), 
+   data = trainDataCopy, method = "rf", metric="ROC", trControl = ctrl)
+proc.time() - ptm_rf
+pred.randomForestModel.prob = predict(randomForestModel, newdata = testDataCopy, type="prob")
+pred.randomForestModel.raw = predict(randomForestModel, newdata = testDataCopy )
 
-#roc.randomForestModel = pROC::roc(ccTest3$DEFAULT,  
-                                  #as.vector(ifelse(pred.randomForestModel.prob[,"yes"] >0.5, 1,0)) )
-#auc.randomForestModel = pROC::auc(roc.randomForestModel)
-#randomForestModel
+roc.randomForestModel = pROC::roc(testDataCopy$DEFAULT,  
+                                  as.vector(ifelse(pred.randomForestModel.prob[,"yes"] >0.5, 1,0)) )
+auc.randomForestModel = pROC::auc(roc.randomForestModel)
+randomForestModel
 ```
 ```{r}
-#confusionMatrix(data = pred.randomForestModel.raw, ccTest3$DEFAULT)
+confusionMatrix(data = pred.randomForestModel.raw, testDataCopy$DEFAULT)
 ```
 ```{r plot_rf_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Random Forest Model AUC and ROC Curve", out.width="1.1\\linewidth"}
-#plot.roc(roc.randomForestModel, print.auc = T, auc.polygon = T, col = mainPalette[3] , print.thres = "best" )
+plot.roc(roc.randomForestModel, print.auc = T, auc.polygon = T, col = mainPalette[3] , print.thres = "best" )
 ```
 ```{r include=FALSE}
-#rm(ctrl)
+rm(trainDataCopy, testDataCopy,ctrl)
 ```
 
 
@@ -422,25 +457,42 @@ plot.roc(roc.logRegModel, rint.auc = T, auc.polygon = T, col = mainPalette[4] , 
 ```
 ```{r include=FALSE}
 rm(ctrl)
-
-Confusion matrix and Figure \ref{fig:plot_logReg_ROC} demonstrate the logistic model performance on the balanced data set. Using the proportion of positive data points that are correctly considered as positive (true positives) and the proportion of negative data points that are mistakenly considered as positive (false negative), we generated a graphic that shows the trade off between the rate at which the model correctly predicts the rain tomorrow with the rate of incorrectly predicting the rain. The value around 0.80 indicates that the model does a good job in discriminating between the two categories.```
-
-
-
+```
+Confusion matrix and Figure \ref{fig:plot_logReg_ROC} demonstrate the logistic model performance on the balanced data set. Using the proportion of positive data points that are correctly considered as positive (true positives) and the proportion of negative data points that are mistakenly considered as positive (false negative), we generated a graphic that shows the trade off between the rate at which the model correctly predicts the rain tomorrow with the rate of incorrectly predicting the rain. The value around 0.80 indicates that the model does a good job in discriminating between the two categories.
 
 ## Model Comparison
+Now it is time to compare the models side by side and pick a winner.
 
+```{r plot_model_comp, fig.align="center", fig.cap="Model AUC Comparison", message=FALSE, warning=FALSE, echo=FALSE, out.width="1.1\\linewidth"}
+modelsFace2Face = data.frame(model=c("logRegModel", "naiveBayesModel", "randomForestModel"),
+        auc=c(auc.logRegModel, auc.naiveBayesModel, auc.randomForestModel))
+modelsFace2Face = modelsFace2Face[order(modelsFace2Face$auc, decreasing = T),]
+modelsFace2Face$model = factor(modelsFace2Face$model, levels = modelsFace2Face$model)
+
+ggplot(data = modelsFace2Face, aes(x=model, y=auc)) +
+  geom_bar(stat="identity", fill=mainPalette[3], colour=mainPalette[3], alpha = 0.5)
+
+print(modelsFace2Face)
+```
 
 #### AUC - ROC perfomance
 
 
 #### Model interpretibility
 
+Logistic Regression and Naive Bayes are all highly interpreatable models. It is easy to explain to the business what impact each input parameter has. The decision tree could be visualized (provided if it is not too large). 
+
+Random Forest on the other hand is a black-box model, complex algorithm which is difficult to explain in simple terms.
+
+
 #### Data Preparation
+Random Forest and Naive Bayes can deal with missing data, outliers, numeric and alphanumeric values. Simply speaking they are not very demanding for data quality. It would be interesting to see how they perform on the original data set without data cleaning. But this is subject of another research...
+
+Logistic regression does require conversion of alphanumeric values to numeric, struggles dealing with the outliers and performs best when fitted with the data that have normal distribution. 
 
 #### Verdict
 
-Despite sensitivity to data quality Logistic Regression outperforms other models in all other major categories. This is our choice!
+Despite sensitivity to data quality Random Forest,Logistic Regression outperforms NaiveBayes model in all other major categories.Both are very close.
 
 
 # Model Deployment
