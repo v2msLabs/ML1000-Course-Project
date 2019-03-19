@@ -22,6 +22,8 @@ output:
 
 
 ```{r echo=FALSE, message=FALSE, warnings=FALSE}
+# Clean all variables that might be left by other script to avoid collusion
+rm(list=ls(all=T))
 # load required libraries
 library(ggplot2) # plotting lib
 library(gridExtra) # arrange grids
@@ -36,10 +38,9 @@ library(summarytools) # nicer data summary stats
 library(xtable) # nice table formats
 library(reshape) # dataframe transformation
 library(corrplot) # nice correlation plots
-library(pscl) #used when calculating pseudo R2 for logistic models
+# library(pscl) #used when calculating pseudo R2 for logistic models
 
-# Clean all variables that might be left by other script to avoid collusion
-rm(list=ls(all=T))
+
 source('utils.R') # supplementary code
 
 # set summarytools global parameters
@@ -54,7 +55,7 @@ st_options(plain.ascii = F,       # This is very handy in all Rmd documents
 # pick palettes
 mainPalette = ggplotColours()
 # set a sample size
-SampleSize = 30000
+SampleSize = 2000
 ```
 
 ```{r global_options, include=FALSE}
@@ -333,42 +334,30 @@ We have concluded the data exploration study. There are a few major points we wo
 * Principal component analysis showed that we can reduce the number of the features to 10 - 12 sustaining the data variance coverage at about **85%**. The top principal components comprise mainly bill amounts and pay statuses (Figure: \ref{fig:ind_contr}). The components do not have clear separation and affect equally the target label (Figure: \ref{fig:vars}).
 
 
-## Data Preparation
-```{r echo=FALSE}
-trainIdx1 <- caret::createDataPartition(y=data[[24]], p=0.7, list=FALSE)
-trainData1 <- data[trainIdx1,]
-
-testLRData <-data[-trainIdx1,]
-
-trainIdx2 <- caret::createDataPartition(y=trainData1[[24]], p=0.6, list=FALSE)
-
-trainLRData <- trainData1[trainIdx2,]
-validationLRData <- trainData1[-trainIdx2,]
-
-
-str(trainLRData)
-
-ccTrain <- factorizeData(trainLRData)
-ccTrain2 <- normalizeData(ccTrain)
-ccTrain3 <- factorizeData(ccTrain2)
-
-ccValidate <- factorizeData(validationLRData)
-ccValidate2 <- normalizeData(ccValidate)
-ccValidate3 <- factorizeData(ccValidate2)
-
-ccTest <- factorizeData(testLRData)
-ccTest2 <- normalizeData(ccTest)
-ccTest3 <- factorizeData(ccTest2)
-```
-
-### Data Imputing
-
 # Modeling and Evalutation
 
-## Feature Selection
+## Data Preparation
 
+Prior to fitting the models with the data we would have to usample the trainging set, because our data set is not blanaced; the number of customers who defaults is much smaller than the number of the payning customers.
 
-### Data Upsampling
+All models we are going to fit will benefit from the data scaling and centering, thus we are going to upply these transformations.
+
+```{r}
+splitIdx = caret::createDataPartition(y=data$DEFAULT, p=0.7, list=FALSE)
+trainData = data[splitIdx,]
+testData  = data[-splitIdx,]
+
+# sample. REMOVE for final run
+trainData = sample_n(trainData, 2000)
+testData = sample_n(testData,2000)
+
+preprocParams = c("BoxCox", "center", "scale");
+
+columns = colnames(trainData)
+trainData = upSample(x = trainData[, columns[columns != "DEFAULT"] ], 
+      y = as.factor(trainData$DEFAULT), list = F, yname = "DEFAULT")
+print(table(trainData$DEFAULT))
+```
 
 
 ## Naive Bayes Model
@@ -380,15 +369,15 @@ It is simple (both intuitively and computationally), fast, performs well with sm
 # possible tuning grid
 # tuninGrid = data.frame(fL=c(0,0.5,1.0), usekernel = TRUE, adjust=c(0,0.5,1.0))
 set.seed(876)
-trainDataCopy = mutate(ccTrain3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
-testDataCopy = mutate(ccTest3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
+trainDataCopy = mutate(trainData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes")))
+testDataCopy = mutate(testData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes")))
 ctrl = trainControl(method="cv", number = 5, 
     # Estimate class probabilities
     classProbs = T,
     # Evaluate performance using the following function
     summaryFunction = twoClassSummary)
 
-naiveBayesModel = caret::train(as.formula('DEFAULT ~ .'), 
+naiveBayesModel = caret::train(DEFAULT ~ ., preProcess = preprocParams,
    data = trainDataCopy, method = "nb", metric="ROC", trControl = ctrl)
 
 pred.naiveBayesModel.prob = predict(naiveBayesModel, newdata = testDataCopy, type="prob")
@@ -414,17 +403,17 @@ rm(trainDataCopy,testDataCopy,ctrl)
 Random Forest is also considered as a very handy and easy to use algorithm, because it’s default hyperparameters often produce a good prediction result. Random Forest adds additional randomness to the model, while growing the trees. Instead of searching for the most important feature while splitting a node, it searches for the best feature among a random subset of features. This results in a wide diversity that generally results in a better model. The main limitation of Random Forest is that a large number of trees can make the algorithm to slow and ineffective for real-time predictions. In general, these algorithms are fast to train, but quite slow to create predictions once they are trained.
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-trainDataCopy = mutate(ccTrain3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
-testDataCopy = mutate(ccTest3, DEFAULT = as.factor(ifelse(DEFAULT==0, "yes", "no")))
+trainDataCopy = mutate(trainData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes")))
+testDataCopy = mutate(testData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes")))
 ctrl = trainControl(method = "cv", number = 3,  
     # Estimate class probabilities
     classProbs = T,
     # Evaluate performance using the following function
     summaryFunction = twoClassSummary)
-ptm_rf <- proc.time()
-randomForestModel = caret::train(as.formula('DEFAULT ~ .'), 
+
+randomForestModel = caret::train(DEFAULT ~ ., preProcess = preprocParams,
    data = trainDataCopy, method = "rf", metric="ROC", trControl = ctrl)
-proc.time() - ptm_rf
+
 pred.randomForestModel.prob = predict(randomForestModel, newdata = testDataCopy, type="prob")
 pred.randomForestModel.raw = predict(randomForestModel, newdata = testDataCopy )
 
@@ -439,15 +428,14 @@ confusionMatrix(data = pred.randomForestModel.raw, testDataCopy$DEFAULT)
 ```{r plot_rf_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Random Forest Model AUC and ROC Curve", out.width="1.1\\linewidth"}
 plot.roc(roc.randomForestModel, print.auc = T, auc.polygon = T, col = mainPalette[3] , print.thres = "best" )
 ```
-```{r include=FALSE}
-rm(trainDataCopy, testDataCopy,ctrl)
-```
-
 
 
 ## Logistic Regression Model
 Logistic regression is an efficient, interpretable and accurate method, which fits quickly with minimal tuning. Logistic regression prediction accuracy will benefit if the data is close to Gaussian distribution. Thus we apply addition transformation to the training data set. We will also be employing 5-fold cross-validation resampling procedure to improve the model.
 ```{r include=FALSE, message=FALSE, warning=FALSE}
+trainDataCopy = mutate(trainData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes")))
+testDataCopy = mutate(testData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes")))
+
 set.seed(123)
 
 ctrl = trainControl(
@@ -455,27 +443,52 @@ ctrl = trainControl(
   method="cv", number = 5,  
   savePredictions = T)
 
-logRegModel = caret::train(as.formula('DEFAULT ~ .'),
-        data = ccTrain3, method="glm", family = binomial(link = "logit"), 
-        trControl = ctrl, preProc = c("BoxCox"))
+logRegModel = caret::train(DEFAULT ~ ., preProcess = preprocParams,
+        data = trainDataCopy, method="glm", family = binomial(link = "logit"), 
+        trControl = ctrl)
 
-pred.logRegModel.raw = predict(logRegModel, newdata =  ccTest3)
-pred.logRegModel.prob = predict(logRegModel, newdata =  ccTest3, type = "prob")
-roc.logRegModel = pROC::roc(ccTest3$DEFAULT, as.vector(ifelse(pred.logRegModel.prob[,"1"] >0.5, 1,0)))
+pred.logRegModel.raw = predict(logRegModel, newdata =  testDataCopy)
+pred.logRegModel.prob = predict(logRegModel, newdata =  testDataCopy, type = "prob")
+
+roc.logRegModel = pROC::roc(testDataCopy$DEFAULT, as.vector(ifelse(pred.logRegModel.prob[,1] >0.5, 1,0)))
 auc.logRegModel = pROC::auc(roc.logRegModel)
 logRegModel
 ```
 ```{r}
-confusionMatrix(data = pred.logRegModel.raw, ccTest3$DEFAULT)
+confusionMatrix(data = pred.logRegModel.raw, testDataCopy$DEFAULT)
 ```
 
 ```{r plot_logReg_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Logistic Regression Model AUC and ROC Curve", out.width="1.1\\linewidth"}
 plot.roc(roc.logRegModel, rint.auc = T, auc.polygon = T, col = mainPalette[4] , print.thres = "best" )
 ```
 ```{r include=FALSE}
-rm(ctrl)
+
 ```
 Confusion matrix and Figure \ref{fig:plot_logReg_ROC} demonstrate the logistic model performance on the balanced data set. Using the proportion of positive data points that are correctly considered as positive (true positives) and the proportion of negative data points that are mistakenly considered as positive (false negative), we generated a graphic that shows the trade off between the rate at which the model correctly predicts the rain tomorrow with the rate of incorrectly predicting the rain. The value around 0.80 indicates that the model does a good job in discriminating between the two categories.
+
+Let's now compare the performance of the PCA components to the performance of the full data set. Just to remind we selected have identified 10 top componenets that explain *83%* of data variance. We are going to reduce the dimentionality of the training and test data set multiplying them on the principal comonent wiegths matrixd.
+
+```{r echo=FALSE, warning=FALSE}
+trainClass = mutate(trainData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes"))) %>% dplyr::select(DEFAULT)
+trainDataCopy =trainData %>% dplyr::select(-DEFAULT)
+testClass = mutate(testData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes"))) %>% dplyr::select(DEFAULT)
+testDataCopy = testData %>% dplyr::select(-DEFAULT)
+
+comps = dataNOL.pca$rotation[,1:10]
+
+set.seed(15623)
+
+testDataReduced =  data.frame( as.matrix(testDataCopy) %*% comps)
+trainDataReduced =  data.frame( as.matrix(trainDataCopy) %*% comps)
+
+logRegPCAModel = caret::train(x = trainDataReduced, y = trainClass$DEFAULT, method = "glm", trControl = ctrl, family = binomial(link = "logit"), preProcess = preprocParams)
+
+pred.logRegPCAModel.raw = predict(logRegPCAModel, newdata = testDataReduced )
+
+confusionMatrix(data = pred.logRegPCAModel.raw, testClass$DEFAULT)
+```
+
+Well the result of the model fitted with the PCA componenets is inferiour to the same very model, whichwas fitted with the whole data set by about 7%. But we shall not forget that the PCA data set had less than a half oof the features of the original data set.
 
 ## Model Comparison
 Now it is time to compare the models side by side and pick a winner.
