@@ -38,10 +38,14 @@ library(summarytools) # nicer data summary stats
 library(xtable) # nice table formats
 library(reshape) # dataframe transformation
 library(corrplot) # nice correlation plots
-# library(pscl) #used when calculating pseudo R2 for logistic models
+library(cluster) # unsupervised learning lib
+library(randomForest)
 
-
-source('utils.R') # supplementary code
+## ggplot default color palette
+ggplotColours <- function(n = 15, h = c(0, 360) + 15){
+  if ((diff(h) %% 360) < 1) h[2] <- h[2] - 360/n
+  hcl(h = (seq(h[1], h[2], length = n)), c = 100, l = 65)
+}
 
 # set summarytools global parameters
 st_options(plain.ascii = F,       # This is very handy in all Rmd documents
@@ -54,8 +58,6 @@ st_options(plain.ascii = F,       # This is very handy in all Rmd documents
 
 # pick palettes
 mainPalette = ggplotColours()
-# set a sample size
-SampleSize = 2000
 ```
 
 ```{r global_options, include=FALSE}
@@ -72,17 +74,19 @@ options(xtable.comment = F)
 
 ## Background
 
-Overdepandance on credit card debt has been an ongoing theme in many countries around the word. For example US consumers started 2018 owing more than $1 trillion in credit card debt (Ref: \cite{wallethub}) It is projected that by the end of 2019 US consumers will increase their collective debt by another 60 billion dollars. Unfortunately many consumers overestimate their ability to pay the debt on time, or the unforeseen circumstances and luck of savings make people default on their payments. This is the least desirable outcome for all parties. Unpaid debt leads, in most cases, to default on the whole outstanding balance causing financial loss for the credit institutions. Majority of the clients go through tremendous emotional and financial stress, risking their credibility. The financial institution make significant efforts to evaluate the prospective client ability to sustain the debt and pay in time to avoid the credit default.  
+Overdepandance on credit card debt has been an ongoing theme in many countries around the word. For example US consumers started 2018 owing more than $1 trillion in credit card debt (Ref: \cite{wallethub}). It is projected that by the end of 2019 US consumers will increase their collective debt by another 60 billion dollars. Unfortunately many consumers overestimate their ability to pay the debt on time, or the unforeseen circumstances and luck of savings make people default on their payments. This is the least desirable outcome for all parties. Unpaid debt leads, in most cases, to default on the whole outstanding balance causing financial loss for the credit institutions. Majority of the clients go through tremendous emotional and financial stress, risking their credibility. The financial institution make significant efforts to evaluate the prospective client ability to sustain the debt and pay in time to avoid the credit default.  
 
 
 ## Objective
 
-This study pursues a few goals. First of all employing the client personal characteristics and the last six month payment history we would like to predict ax accurate as possible if the client makes the next month payment or defaults. We will employ a few supervised learning models to attack the problem. 
+This study pursues two goals. The main objective is to predict as accurate as possible if the client makes the next month payment or defaults. We will employ CRISP-DM methodology (Ref: \cite{mining}) and supervised learning approach, to achieve this goal.
 
-Another objective is to understand which features of the data set have the most impact on the next payment success/ failure.
+We are also motivated to profile, if possible, the customer base. The questions we will try to address are:
 
-We are also motivated to unearth, if possible, any trend that might shed light on what make people to default on the payment. And lastly the authors of this study will try to estimate how much a client could pay when the next bill comes 
+* If there are specific groups of cardholders that share similar features or behavioral patterns
+* How theses groups, if exist, pay their debt
 
+To achieve the second goal we will use unsupervised learning approach.
 
 # Data Analysis
 
@@ -120,9 +124,7 @@ PAY_AMT6               | Amount paid in April (March bill)
 **DEFAULT**            | **Target label that denotes whether the client paid the next month bill (0) or did not (1)** 
 
 
-## Data Exploration
-
-### Feature Analytics
+## Statistics
 
 We start our research with the feature exploration and understanding. 
 
@@ -265,9 +267,9 @@ data %>% filter(EDUCATION == 0 | EDUCATION >4) %>% summarise(COUNT=n())
 ```
 
 
-### Data Correlation and Principal Component Analysis
+## Data Correlation and Principal Component Analysis
 
-In this section of our study we continue exploring the relations between various features of the data set. We put stress on finding the correlated features, the correlation between the features and the target label. We also are going to apply principal component analysis (PCA) to understand which attributes of the data set explain most variance of the original data. If our findings are fruitful we may design a model that requires smaller number of the input parameters without sacrificing the predictive power of the model.
+In this section of our study we continue exploring the relations between various features of the data set. We put stress on finding the correlated features, the correlation between the features and the target label. We also are going to apply principal component analysis (PCA) to understand which attributes of the data set explain most variance of the original data (Ref: \cite{pca}). If our findings are fruitful we may design a model that requires smaller number of the input parameters without sacrificing the predictive power of the model.
 
 Let's plot the correlation matrix first.
 ```{r corr_plot, echo=FALSE, fig.align="center", fig.cap="Data Correlation"}
@@ -322,11 +324,11 @@ fviz_pca_var(dataNOL.pca,col.var = "coord", gradient.cols = mainPalette,
 ```
 The plot submitted above clearly shows that the biggest contributor to the first quadrant is a bill amount group. And the contributors to the fourth quadrant are payments statuses.
 
-#### Takeaways from Data Exploration Excersize  
+## Takeaways from Data Exploration Excersize  
 
 We have concluded the data exploration study. There are a few major points we would like to highlight. They are:
 
-* The majory of the credit card holders maintain good standing (see Figure: \ref{fig:payment_status}). 
+* The majority of the credit card holders maintain good standing (see Figure: \ref{fig:payment_status}). 
 * The clients do maintain debt. On regular basis they pay the amount that meets the minimal required payment but less then the bill amount (see Figure \ref{fig:payment_delta_density}). 
 * The clients tend to reduce the amount of debt paying the outstanding balance in lump sums (Figure: \ref{fig:payment_density}).
 * Demographically married and single people represented almost equally, women are represented better than men. Majority of the credit card holders have a university degree. The vast majority of the clients are between 25 and 50 year old.
@@ -334,22 +336,28 @@ We have concluded the data exploration study. There are a few major points we wo
 * Principal component analysis showed that we can reduce the number of the features to 10 - 12 sustaining the data variance coverage at about **85%**. The top principal components comprise mainly bill amounts and pay statuses (Figure: \ref{fig:ind_contr}). The components do not have clear separation and affect equally the target label (Figure: \ref{fig:vars}).
 
 
-# Modeling and Evalutation
+# Classification Models and Model Performance Evalutation
+
+In this section we will try reach our main goal - predict if the cardholder is going to default on the next payment or not.We will evaluate three supervised learning approaches: Naive Bayes, Random Forest and Logistic Regression (Ref: \cite{caret}). Each model will be cross-validated employing k-fold technique. We will analyse the ROC curve and confusion matrix of each model.
+
+In addition to the said above we compare performance of the logistic regression algorithm on the whole data set and the data set that comprises 10-top components identified during PCA analysis.
+
+In the end of this section we plot all tree model AUC stats.
 
 ## Data Preparation
 
-Prior to fitting the models with the data we would have to usample the trainging set, because our data set is not blanaced; the number of customers who defaults is much smaller than the number of the payning customers.
+Prior to fitting the models with the data we would have to upsample the training set, because our data set is not balanced; the number of customers who defaults is much smaller than the number of the paying customers.
 
-All models we are going to fit will benefit from the data scaling and centering, thus we are going to upply these transformations.
+All models we are going to fit will benefit from the data scaling and centering, thus we are going to apply these transformations. Below numbers are the count of the deaults on the balanced data set.
 
-```{r}
+```{r, echo=FALSE}
 splitIdx = caret::createDataPartition(y=data$DEFAULT, p=0.7, list=FALSE)
 trainData = data[splitIdx,]
 testData  = data[-splitIdx,]
 
 # sample. REMOVE for final run
-trainData = sample_n(trainData, 2000)
-testData = sample_n(testData,2000)
+#trainData = sample_n(trainData, 2000)
+#testData = sample_n(testData,2000)
 
 preprocParams = c("BoxCox", "center", "scale");
 
@@ -359,11 +367,15 @@ trainData = upSample(x = trainData[, columns[columns != "DEFAULT"] ],
 print(table(trainData$DEFAULT))
 ```
 
+## Feature Selection
+
+We will be using all features of the data set. In the case of the logistic regression we will examine the algorithm performance on the PCA-reduced data set. 
 
 ## Naive Bayes Model
+
 Naïve Bayes classification is a kind of simple probabilistic classification methods based on Bayes’ theorem with the assumption of independence between features. 
 
-It is simple (both intuitively and computationally), fast, performs well with small amounts of training data, and scales well to large data sets. The greatest weakness of the naïve Bayes classifier is that it relies on an often-faulty assumption of equally important and independent features which results in biased posterior probabilities. Although this assumption is rarely met, in practice, this algorithm works surprisingly well and accurate; however, on average it rarely can compete with the accuracy of advanced tree-based methods (random forests & gradient boosting machines) but is definitely worth having in our toolkit.
+It is simple (both intuitively and computationally), fast, performs well with small amounts of training data, and scales well to large data sets. The greatest weakness of the Naïve Bayes classifier is that it relies on an often-faulty assumption of equally important and independent features which results in biased posterior probabilities. Although this assumption is rarely met, in practice, this algorithm works surprisingly well and accurate; however, on average it rarely can compete with the accuracy of advanced tree-based methods (random forests & gradient boosting machines) but is definitely worth having in our toolkit.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 # possible tuning grid
@@ -388,19 +400,15 @@ roc.naiveBayesModel = pROC::roc(testDataCopy$DEFAULT,
 auc.naiveBayesModel = pROC::auc(roc.naiveBayesModel)
 naiveBayesModel
 ```
-```{r}
+```{r echo=FALSE}
 confusionMatrix(data = pred.naiveBayesModel.raw, testDataCopy$DEFAULT)
 ```
-```{r plot_nb_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Naive Bayes Model AUC and ROC Curve", out.width="1.1\\linewidth"}
+```{r plot_nb_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Naive Bayes Model AUC and ROC Curve", out.width="70%"}
 plot.roc(roc.naiveBayesModel, print.auc = T, auc.polygon = T, col = mainPalette[2] , print.thres = "best" )
 ```
-```{r include=FALSE}
-rm(trainDataCopy,testDataCopy,ctrl)
-```
-
 
 ## Random Forest Model
-Random Forest is also considered as a very handy and easy to use algorithm, because it’s default hyperparameters often produce a good prediction result. Random Forest adds additional randomness to the model, while growing the trees. Instead of searching for the most important feature while splitting a node, it searches for the best feature among a random subset of features. This results in a wide diversity that generally results in a better model. The main limitation of Random Forest is that a large number of trees can make the algorithm to slow and ineffective for real-time predictions. In general, these algorithms are fast to train, but quite slow to create predictions once they are trained.
+Random Forest is also considered as a very handy and easy to use algorithm, because it’s default hyper parameters often produce a good prediction result. Random Forest adds additional randomness to the model, while growing the trees. Instead of searching for the most important feature while splitting a node, it searches for the best feature among a random subset of features. This results in a wide diversity that generally results in a better model. The main limitation of Random Forest is that a large number of trees can make the algorithm to slow and ineffective for real-time predictions. In general, these algorithms are fast to train, but quite slow to create predictions once they are trained.
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
 trainDataCopy = mutate(trainData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes")))
@@ -422,17 +430,17 @@ roc.randomForestModel = pROC::roc(testDataCopy$DEFAULT,
 auc.randomForestModel = pROC::auc(roc.randomForestModel)
 randomForestModel
 ```
-```{r}
+```{r, echo=FALSE}
 confusionMatrix(data = pred.randomForestModel.raw, testDataCopy$DEFAULT)
 ```
-```{r plot_rf_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Random Forest Model AUC and ROC Curve", out.width="1.1\\linewidth"}
+```{r plot_rf_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Random Forest Model AUC and ROC Curve", out.width="70%"}
 plot.roc(roc.randomForestModel, print.auc = T, auc.polygon = T, col = mainPalette[3] , print.thres = "best" )
 ```
 
 
 ## Logistic Regression Model
-Logistic regression is an efficient, interpretable and accurate method, which fits quickly with minimal tuning. Logistic regression prediction accuracy will benefit if the data is close to Gaussian distribution. Thus we apply addition transformation to the training data set. We will also be employing 5-fold cross-validation resampling procedure to improve the model.
-```{r include=FALSE, message=FALSE, warning=FALSE}
+Logistic regression is an efficient, interpretable and accurate method, which fits quickly with minimal tuning. Logistic regression prediction accuracy will benefit if the data is close to Gaussian distribution. Thus we apply addition transformation to the training data set. We will also be employing 5-fold cross-validation re-sampling procedure to improve the model.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 trainDataCopy = mutate(trainData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes")))
 testDataCopy = mutate(testData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes")))
 
@@ -454,19 +462,17 @@ roc.logRegModel = pROC::roc(testDataCopy$DEFAULT, as.vector(ifelse(pred.logRegMo
 auc.logRegModel = pROC::auc(roc.logRegModel)
 logRegModel
 ```
-```{r}
+```{r, echo=FALSE}
 confusionMatrix(data = pred.logRegModel.raw, testDataCopy$DEFAULT)
 ```
 
-```{r plot_logReg_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Logistic Regression Model AUC and ROC Curve", out.width="1.1\\linewidth"}
+```{r plot_logReg_ROC,  echo=FALSE, message=FALSE, warning=FALSE, fig.align="center", fig.cap="Logistic Regression Model AUC and ROC Curve", out.width="70%"}
 plot.roc(roc.logRegModel, rint.auc = T, auc.polygon = T, col = mainPalette[4] , print.thres = "best" )
 ```
-```{r include=FALSE}
 
-```
-Confusion matrix and Figure \ref{fig:plot_logReg_ROC} demonstrate the logistic model performance on the balanced data set. Using the proportion of positive data points that are correctly considered as positive (true positives) and the proportion of negative data points that are mistakenly considered as positive (false negative), we generated a graphic that shows the trade off between the rate at which the model correctly predicts the rain tomorrow with the rate of incorrectly predicting the rain. The value around 0.80 indicates that the model does a good job in discriminating between the two categories.
+Confusion matrix and Figure \ref{fig:plot_logReg_ROC} demonstrate the logistic model performance on the balanced data set. Using the proportion of positive data points that are correctly considered as positive (true positives) and the proportion of negative data points that are mistakenly considered as positive (false negative), we generated a graphic that shows the trade off between the rate at which the model correctly predicts the rain tomorrow with the rate of incorrectly predicting the rain. The value around 0.67 indicates that the model does a good job in discriminating between the two categories.
 
-Let's now compare the performance of the PCA components to the performance of the full data set. Just to remind we selected have identified 10 top componenets that explain *83%* of data variance. We are going to reduce the dimentionality of the training and test data set multiplying them on the principal comonent wiegths matrixd.
+Let's now compare the performance of the PCA components to the performance of the full data set. Just to remind we selected have identified 10 top components that explain *83%* of data variance. We are going to reduce the dimentionality of the training and test data set multiplying them on the principal component weight matrix.
 
 ```{r echo=FALSE, warning=FALSE}
 trainClass = mutate(trainData, DEFAULT = as.factor(ifelse(DEFAULT==0, "no", "yes"))) %>% dplyr::select(DEFAULT)
@@ -484,51 +490,280 @@ trainDataReduced =  data.frame( as.matrix(trainDataCopy) %*% comps)
 logRegPCAModel = caret::train(x = trainDataReduced, y = trainClass$DEFAULT, method = "glm", trControl = ctrl, family = binomial(link = "logit"), preProcess = preprocParams)
 
 pred.logRegPCAModel.raw = predict(logRegPCAModel, newdata = testDataReduced )
-
 confusionMatrix(data = pred.logRegPCAModel.raw, testClass$DEFAULT)
 ```
 
-Well the result of the model fitted with the PCA componenets is inferiour to the same very model, whichwas fitted with the whole data set by about 7%. But we shall not forget that the PCA data set had less than a half oof the features of the original data set.
+Well the result of the model fitted with the PCA components is inferior to the same very model. The balanced accuracy of the data set with lower dimentionality dropped by about **7%**. But we shall not forget that the PCA components data set had less than a half of the features of the original data set. Tolerance of the reduction of the predictive power of the model depends on the business requirements. In some cases it might be Okay in others not. In our particular case we consider such precision drop is critical, thus we stick to the fully featured data set.  
+
 
 ## Model Comparison
 Now it is time to compare the models side by side and pick a winner.
 
-```{r plot_model_comp, fig.align="center", fig.cap="Model AUC Comparison", message=FALSE, warning=FALSE, echo=FALSE, out.width="1.1\\linewidth"}
+```{r plot_model_comp, fig.align="center", fig.cap="Model AUC Comparison", message=FALSE, warning=FALSE, echo=FALSE, out.width="70%"}
 modelsFace2Face = data.frame(model=c("logRegModel", "naiveBayesModel", "randomForestModel"),
         auc=c(auc.logRegModel, auc.naiveBayesModel, auc.randomForestModel))
 modelsFace2Face = modelsFace2Face[order(modelsFace2Face$auc, decreasing = T),]
 modelsFace2Face$model = factor(modelsFace2Face$model, levels = modelsFace2Face$model)
 
 ggplot(data = modelsFace2Face, aes(x=model, y=auc)) +
-  geom_bar(stat="identity", fill=mainPalette[3], colour=mainPalette[3], alpha = 0.5)
+  geom_bar(stat="identity", fill=mainPalette[7], colour=mainPalette[7], alpha = 0.5)
 
 print(modelsFace2Face)
 ```
 
-#### AUC - ROC perfomance
+### AUC - ROC perfomance
+
+AUC stands for Area under the ROC Curve and ROC for Receiver operating characteristic curve. This is one of the most important KPIs of the classification algorithms. These two metrics measure how well the models distinguishing between the classes. The higher AUC the better model predicts positive and negative outcome. 
+
+Figures  \ref{fig:plot_nb_ROC}, \ref{fig:plot_rf_ROC}, \ref{fig:plot_logReg_ROC} and accompanying data show that on the test data set all the models demonstrated very close results. Random Forest has the highest overall accuracy (~80%) but performs poorly on the negative outcome - *paymant default* (43%), thus the balanced accuracy is lower (about 67%). 
+
+Naive Bayes model almost mirrors the random forest in the overall accuracy.But its specificity is even lower, 28%. The balanced accuracy of the model is about 62%.
+
+Logistic regression model is the most blanaced one; it separates positive and negative outcomes equally well. It's balanced accuracy is **67%**.
 
 
-#### Model interpretibility
+### Model Interpretibility
 
-Logistic Regression and Naive Bayes are all highly interpreatable models. It is easy to explain to the business what impact each input parameter has. The decision tree could be visualized (provided if it is not too large). 
+Logistic Regression and Naive Bayes are all highly interpretable models. It is easy to explain to the business what impact each input parameter has. The decision tree could be visualized (provided if it is not too large). 
 
 Random Forest on the other hand is a black-box model, complex algorithm which is difficult to explain in simple terms.
 
 
-#### Data Preparation
+### Data Pre-Processing
+
 Random Forest and Naive Bayes can deal with missing data, outliers, numeric and alphanumeric values. Simply speaking they are not very demanding for data quality. It would be interesting to see how they perform on the original data set without data cleaning. But this is subject of another research...
 
 Logistic regression does require conversion of alphanumeric values to numeric, struggles dealing with the outliers and performs best when fitted with the data that have normal distribution. 
 
-#### Verdict
+### Verdict
 
-Despite sensitivity to data quality Random Forest,Logistic Regression outperforms NaiveBayes model in all other major categories.Both are very close.
+Despite sensitivity to data quality Logistic Regression outperforms Naive Bayes and Random Forest models in the ability to separate positive and negative classes. It is fast, scales well and highly interpretable. Thus this is our winner.
+
+
+# Undertanding the Client Base Employing Unsupervised Learning
+
+Lastly we believe it would be beneficial to profile the client base. This would add additional insights into understanding of the credit card holders demographics, spending and borrowing habits. We will be employing *Clastering Large Applications (CLARA)* approach to attack this challenge. This study does not make its goal to compare various unsupervised model techniques. *CLARA* has been chosen because it is robust, relatively easy to understand, scales well, handles categorical and continuous features and fast.
+
+It is based on The **Partitioning Around Medoids** (*PAM*) algorithm, which is a popular realization of k-medoids clustering method. We employ the silhouette coefficient measure to gauge how well the clusters are separated. The silhouette analysis also provides insights into the cluster density.
+
+After many trials and errors we have selected a few features that describe the client financial and demographic profile quite well, namely:
+
+* Bill amount history
+* Credit standing history
+* Cardholder education
+
+Figure \ref{fig:silh} shows that the clusters are fairly well defined. There is a minor overlap between clusters 2, 3 and 4.
+```{r silh,  echo=FALSE, warning=FALSE, fig.align="center", fig.cap="Cluster Silhouette",  out.width = "80%"}
+dataC =  dplyr::select(data,EDUCATION,
+                      BILL_AMT1, BILL_AMT2, BILL_AMT3, BILL_AMT4, BILL_AMT5, BILL_AMT6,
+PAY_1, PAY_2, PAY_3, PAY_4,PAY_5,PAY_6)  
+
+dataCScaled = dataC %>% scale()
+clara = clara(dataCScaled, k = 4, metric = "euclidean",stand = F, samples = 100, sampsize =500)
+clusteredData = cbind(data, CLUSTER=c(clara$clustering))
+fviz_silhouette(clara, title = "") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+```
+
+The plot \ref{fig:clusters} renders the clusters shape against the first two dimensions.
+```{r clusters,  echo=FALSE, warning=FALSE, fig.align="center", fig.cap="Clusters",  out.width = "80%"}
+fviz_cluster(clara, dataCScaled,   geom = "point", main="",
+   axes = c(1,2), xlab = "Education", ylab = "Last Month Bill Amount") 
+```
+
+So what are those clusters are. How to interpret them? The next few paragraphs visualize and describe the cluster contents.
+
+## Cluster #1 - The Regular Folks
+
+Nothing particular stands out about this group. Majority of the clients in this group pay required minimum. small percentage of the group delay the payments but no more than 2 months. Their monthly bills rarely go beyond 75,000 Taiwanese dollars. Some members of this cluster have high credit limit, but it does not look like they take advantage of it. They are rather well educated, range between 20 and 40 years of age. This is the largest category that describes pretty accurately the main mass of the cardholder - **43.7%**. 
+
+```{r cluster1, echo=FALSE, fig.align="center", fig.cap="Cluster One - The Regular Folks", warning=FALSE, fig.height=8}
+payStatusName = c("Inactive","Paid in Full","Paid Minimum Due","Month Delay", "Two-Month Delay",
+                 "Three-Month Delay","Four-Month Delay","Five-Month Delay","Six-Month Delay","Seven-Month Delay",
+                 "Eight-Month Delay","Nine-Plus")
+edName = c("Graduate school","University","High school","Other")
+ageInt = c(20,30,40,50,60)
+ageName = c("20+","30+","40+","50+","60+")
+limitInt = c(50000,100000,150000,250000,350000,500000)
+limitIntName = c("<$50,000","<$100,000","<$150,000","<$250,000","<$350,000","<$500,000","$500,000+")
+billInt = c(15000,30000,45000,60000,75000,90000,150000)
+billIntName = c("<$15,000","<$30,000","<$45,000","<$60,000","<$75,000","<$90,000","<$150,000","$150,000+")
+defaultName = c("No","Yes")
+
+clusteredData$CLIENT_STANDING = as.factor(payStatusName[3+clusteredData$PAY_1])
+clusteredData$Education = as.factor(edName[clusteredData$EDUCATION])
+clusteredData$AGE_GROUP= as.factor(ageName[findInterval(clusteredData$AGE,ageInt)])
+clusteredData$CREDIT_LIMIT= as.factor(limitIntName[1+findInterval(clusteredData$LIMIT_BAL,limitInt)])
+clusteredData$BILL_AMOUNT= as.factor(billIntName[1+findInterval(clusteredData$BILL_AMT1,billInt)])
+clusteredData$DO_DEFAULT = as.factor(defaultName[1+clusteredData$DEFAULT])
+
+c = clusteredData %>% filter(CLUSTER == 1) 
+cEd = c %>% group_by(Education) %>% summarise(COUNT=n())
+cAge = c %>% group_by(AGE_GROUP) %>% summarise(COUNT=n())
+cLimit = c %>% group_by(CREDIT_LIMIT) %>% summarise(COUNT=n())
+cBill = c %>% group_by(BILL_AMOUNT) %>% summarise(COUNT=n())
+cStadning = c %>% group_by(CLIENT_STANDING) %>% summarise(COUNT=n())
+cDefault  = c %>% group_by(DO_DEFAULT) %>% summarise(COUNT=n())
+
+simple_theme = theme_minimal()+
+  theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.border = element_blank(),
+  panel.grid=element_blank(),
+  axis.ticks = element_blank(),
+  panel.background = element_blank(),
+  legend.title=element_text(size=9), 
+  legend.text=element_text(size=7)
+  )
+
+p1 =  ggplot(cBill, aes(x="", y=COUNT, fill=BILL_AMOUNT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) +  simple_theme
+
+p2 = ggplot(cStadning, aes(x="", y=COUNT, fill=CLIENT_STANDING))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p3 = ggplot(cEd, aes(x="", y=COUNT, fill=Education))+
+geom_bar(stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p4 = ggplot(cAge, aes(x="", y=COUNT, fill=AGE_GROUP))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p5 = ggplot(cLimit, aes(x="", y=COUNT, fill=CREDIT_LIMIT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) +  simple_theme
+
+p6 = ggplot(cDefault, aes(x="", y=COUNT, fill=DO_DEFAULT))+
+geom_bar(width = 0.7, stat = "identity" ) + scale_fill_manual(values = c(mainPalette[6], mainPalette[1])) +simple_theme
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2)
+```
+
+## Cluster #2 - The Exuberant Spenders
+
+People in this cluster live the life! Their monthly bills often go beyond $150,000 mark. Many group members have a credit limit in the range 250,000 or more. As the *Regular Folks* the cardholder of this class do not pay the full bill amount. There is a good sector of the clients that are 3 month behind with the payment. Education-wise the group almost equally split between the university and graduate school graduates. Just like in the case of the first cluster majority of the people in this group are between 20 and 40 years old, where **30+** age group dominates. This is the third largest group of the credit card holder population - **14.8%**. 
+
+```{r cluster2, echo=FALSE, fig.align="center", fig.cap="Cluster Two - The Exuberant Spenders", warning=FALSE, fig.height=8}
+c = clusteredData %>% filter(CLUSTER == 2) 
+cEd = c %>% group_by(Education) %>% summarise(COUNT=n())
+cAge = c %>% group_by(AGE_GROUP) %>% summarise(COUNT=n())
+cLimit = c %>% group_by(CREDIT_LIMIT) %>% summarise(COUNT=n())
+cBill = c %>% group_by(BILL_AMOUNT) %>% summarise(COUNT=n())
+cStadning = c %>% group_by(CLIENT_STANDING) %>% summarise(COUNT=n())
+cDefault  = c %>% group_by(DO_DEFAULT) %>% summarise(COUNT=n())
+
+p1 =  ggplot(cBill, aes(x="", y=COUNT, fill=BILL_AMOUNT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) +  simple_theme
+
+p2 = ggplot(cStadning, aes(x="", y=COUNT, fill=CLIENT_STANDING))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p3 = ggplot(cEd, aes(x="", y=COUNT, fill=Education))+
+geom_bar(stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p4 = ggplot(cAge, aes(x="", y=COUNT, fill=AGE_GROUP))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p5 = ggplot(cLimit, aes(x="", y=COUNT, fill=CREDIT_LIMIT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) +  simple_theme
+
+p6 = ggplot(cDefault, aes(x="", y=COUNT, fill=DO_DEFAULT))+
+geom_bar(width = 0.7, stat = "identity" ) + scale_fill_manual(values = c(mainPalette[6], mainPalette[1])) +simple_theme
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2)
+```
+
+## Cluster #3 - The Realists
+
+The second largest group of the clients (**32.7%**) are people who really keep their spending in check. The vast majority of the people in this cluster have the bill amount less than $15,000 NT (about 650 CAD). Unlike the previous two groups almost half of the realists pay their bills in full. Only small percentage have delayed the payment by a month. The realists are generally older. Half of the group finished the graduate school, the second largest education group are university graduates. The credit limit of the group varies and could be very high but they do not fall victims to seduction!
+
+
+```{r cluster3, echo=FALSE, fig.align="center", fig.cap="Cluster Three - The Realists", warning=FALSE, fig.height=8}
+c = clusteredData %>% filter(CLUSTER == 3) 
+cEd = c %>% group_by(Education) %>% summarise(COUNT=n())
+cAge = c %>% group_by(AGE_GROUP) %>% summarise(COUNT=n())
+cLimit = c %>% group_by(CREDIT_LIMIT) %>% summarise(COUNT=n())
+cBill = c %>% group_by(BILL_AMOUNT) %>% summarise(COUNT=n())
+cStadning = c %>% group_by(CLIENT_STANDING) %>% summarise(COUNT=n())
+cDefault  = c %>% group_by(DO_DEFAULT) %>% summarise(COUNT=n())
+
+p1 =  ggplot(cBill, aes(x="", y=COUNT, fill=BILL_AMOUNT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) +  simple_theme
+
+p2 = ggplot(cStadning, aes(x="", y=COUNT, fill=CLIENT_STANDING))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p3 = ggplot(cEd, aes(x="", y=COUNT, fill=Education))+
+geom_bar(stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p4 = ggplot(cAge, aes(x="", y=COUNT, fill=AGE_GROUP))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p5 = ggplot(cLimit, aes(x="", y=COUNT, fill=CREDIT_LIMIT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) +  simple_theme
+
+p6 = ggplot(cDefault, aes(x="", y=COUNT, fill=DO_DEFAULT))+
+geom_bar(width = 0.7, stat = "identity" ) + scale_fill_manual(values = c(mainPalette[6], mainPalette[1])) +simple_theme
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2)
+```
+
+## Cluster #4 - The Grinders 
+
+The striking difference between this cluster of people and the others is a default rate; it is about **65%**! The majority of the grinders have relatively low bills: $45,000 or less. Smaller credit limits, - less than 100,000. Yet, predominantly they are two or more month late with their payments. This is a highly educated group, majority of which are university graduates. Wait a minute... Age-wise this is the youngest group of all, where over 40% a people in their twenties. Maybe they are still students? Thankfully this is the smallest group that make **8.6** of the total population of the cardholders. 
+
+```{r cluster4, echo=FALSE, fig.align="center", fig.cap="Cluster Four- The Grinders", warning=FALSE, fig.height=8}
+c = clusteredData %>% filter(CLUSTER == 4) 
+cEd = c %>% group_by(Education) %>% summarise(COUNT=n())
+cAge = c %>% group_by(AGE_GROUP) %>% summarise(COUNT=n())
+cLimit = c %>% group_by(CREDIT_LIMIT) %>% summarise(COUNT=n())
+cBill = c %>% group_by(BILL_AMOUNT) %>% summarise(COUNT=n())
+cStadning = c %>% group_by(CLIENT_STANDING) %>% summarise(COUNT=n())
+cDefault  = c %>% group_by(DO_DEFAULT) %>% summarise(COUNT=n())
+
+p1 =  ggplot(cBill, aes(x="", y=COUNT, fill=BILL_AMOUNT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) +  simple_theme
+
+p2 = ggplot(cStadning, aes(x="", y=COUNT, fill=CLIENT_STANDING))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p3 = ggplot(cEd, aes(x="", y=COUNT, fill=Education))+
+geom_bar(stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p4 = ggplot(cAge, aes(x="", y=COUNT, fill=AGE_GROUP))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0) +  simple_theme
+
+p5 = ggplot(cLimit, aes(x="", y=COUNT, fill=CREDIT_LIMIT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) +  simple_theme
+
+p6 = ggplot(cDefault, aes(x="", y=COUNT, fill=DO_DEFAULT))+
+geom_bar(width = 0.7, stat = "identity" ) + scale_fill_manual(values = c(mainPalette[6], mainPalette[3])) +simple_theme
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2)
+```
 
 
 # Model Deployment
 
+Our best classification model has predictive power of 68%. Is it good enough? It is hard to tell. We feel that the model meets our first objective, which is prediction of the default on the next month payment. Logistic regression model we picked is fast, equally sensitive to the positive and negative outcomes. It produces reasonably good result even on the lower dimension data sets. The model is fast and easy to deploy. Due to the nature of the business the model does require frequent data updates and re-training.
+
+We are also very satisfied with accomplishment of our second goal, which is understanding of the customer base. We believe that we pretty accurately captured the main characteristics and behavioral patterns of the credit card holders. **CLARA** approach we employed provided very plausible result. This model is fast and easy to deploy. It does not require significant computing power to produce good result.
+
 
 # Conclusion
+
+Through exploring credit card holders borrowing and spending patterns collected in 2006 in Taiwan we were able to come up with two models. One is a binary classifier, which predicts a default on the upcoming credit card bill. The second model provides in-depth view of the client base.  
+
+The study started with thorough analysis of the data set. At this phase we were able to identified many interesting patterns that insured the success of the whole project. We commenced our research providing descriptive stats on all available features of the data set. We also applied Principal Component Analysis approach to deduce which features carried the most information.
+
+Then we applied and evaluated three supervised learning algorithms: Logistic Regression, Naive Bayes and Random Forest. The logistic regression model we tested with the whole feature set and with the component-based set, which we picked during the PCA phase. All three models were k-fold cross-validated and thoroughly evaluate employing ROC curve and confusion matrix approaches.
+
+Lastly we applied unsupervised learning to understand who the credit card holders are, how they borrow and spend money, whether they are the clients in good standing or prone to default. 
+
+As a result of this study we fully understood the data we dealt with. We designed reasonably accurate credit card default prediction model. We managed to group the clients into meaningful, highly interpretable clusters that explain the customer behavioral patterns well.
+
+Overall we believe we have achieved all our goals. 
+
 
 \bibliography{RJreferences}
 
