@@ -38,8 +38,7 @@ library(summarytools) # nicer data summary stats
 library(xtable) # nice table formats
 library(reshape) # dataframe transformation
 library(corrplot) # nice correlation plots
-# library(pscl) #used when calculating pseudo R2 for logistic models
-
+library(cluster) # unsupervised learning lib
 
 source('utils.R') # supplementary code
 
@@ -523,6 +522,174 @@ Logistic regression does require conversion of alphanumeric values to numeric, s
 #### Verdict
 
 Despite sensitivity to data quality Random Forest,Logistic Regression outperforms NaiveBayes model in all other major categories.Both are very close.
+
+
+# Undertanding the Clinet Base Employing Unsupervised Learning
+
+Lastly we believe it would be beneficial to profie the client base. This would add addtional insights into understanding of the credit card holders demographics and spending and borrowing habbits. We will be employing CLARA approach to attack this challange. This study does not make its goal to compare various unsupervised model techniques. CLARA was chozen because it is robust, relatively easy to understand and fast. After many trials and errors we have selected a few features that describe the client financial and demographic profile quite well
+
+```{r echo=FALSE, warning=FALSE}
+dataC =  dplyr::select(data,EDUCATION,
+                      BILL_AMT1, BILL_AMT2, BILL_AMT3, BILL_AMT4, BILL_AMT5, BILL_AMT6,
+PAY_1, PAY_2, PAY_3, PAY_4,PAY_5,PAY_6)  
+
+
+dataSampleScaled = sample_n(dataC,3000) %>% scale()
+H =  get_clust_tendency(dataSampleScaled, n = 100, graph = F, seed = 6701)
+print(H[["hopkins_stat"]])
+
+dataCScaled = dataC %>% scale()
+
+clara = clara(dataCScaled, k = 4, metric = "euclidean",stand = F, samples = 100, sampsize =500)
+clusteredData = cbind(data, CLUSTER=c(clara$clustering))
+fviz_silhouette(clara, title = "") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+
+fviz_cluster(clara, dataCScaled,   geom = "point", main="",
+   axes = c(1,2)) 
+
+```
+
+```{r cluster1, echo=FALSE, fig.align="center", fig.cap="Cluster One", warning=FALSE}
+payStatusName = c("Inactive","Paid in Full","Paid Minimum Due","Month Delay", "Two-Month Delay",
+                 "Three-Month Delay","Four-Month Delay","Five-Month Delay","Six-Month Delay","Seven-Month Delay",
+                 "Eight-Month Delay","Nine-Plus")
+edName = c("Graduate school","University","High school","Other")
+ageInt = c(20,30,40,50,60)
+ageName = c("20+","30+","40+","50+","60+")
+limitInt = c(50000,100000,150000,250000,350000,500000)
+limitIntName = c("<$50,000","<$100,000","<$150,000","<$250,000","<$350,000","<$500,000","$500,000+")
+billInt = c(15000,30000,45000,60000,75000,90000,150000)
+billIntName = c("<$15,000","<$30,000","<$45,000","<$60,000","<$75,000","<$90,000","<$150,000","$150,000+")
+defaultName = c("No","Yes")
+
+clusteredData$CLIENT_STANDING = as.factor(payStatusName[3+clusteredData$PAY_1])
+clusteredData$Education = as.factor(edName[clusteredData$EDUCATION])
+clusteredData$AGE_GROUP= as.factor(ageName[findInterval(clusteredData$AGE,ageInt)])
+clusteredData$CREDIT_LIMIT= as.factor(limitIntName[1+findInterval(clusteredData$LIMIT_BAL,limitInt)])
+clusteredData$BILL_AMOUNT= as.factor(billIntName[1+findInterval(clusteredData$BILL_AMT1,billInt)])
+clusteredData$DO_DEFAULT = as.factor(defaultName[1+clusteredData$DEFAULT])
+
+c = clusteredData %>% filter(CLUSTER == 1) 
+cEd = c %>% group_by(Education) %>% summarise(COUNT=n())
+cAge = c %>% group_by(AGE_GROUP) %>% summarise(COUNT=n())
+cLimit = c %>% group_by(CREDIT_LIMIT) %>% summarise(COUNT=n())
+cBill = c %>% group_by(BILL_AMOUNT) %>% summarise(COUNT=n())
+cStadning = c %>% group_by(CLIENT_STANDING) %>% summarise(COUNT=n())
+cDefault  = c %>% group_by(DO_DEFAULT) %>% summarise(COUNT=n())
+
+p1 = ggplot(cBill, aes(x="", y=COUNT, fill=BILL_AMOUNT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) 
+
+p2 = ggplot(cStadning, aes(x="", y=COUNT, fill=CLIENT_STANDING))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0)
+
+p3 = ggplot(cLimit, aes(x="", y=COUNT, fill=CREDIT_LIMIT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0)
+
+p4 = ggplot(cEd, aes(x="", y=COUNT, fill=Education))+
+geom_bar(stat = "identity") +   coord_polar("y", start=0)
+
+p5 = ggplot(cAge, aes(x="", y=COUNT, fill=AGE_GROUP))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0)
+
+p6 = ggplot(cDefault, aes(x="", y=COUNT, fill=DO_DEFAULT))+
+geom_bar(width = 1, stat = "identity" ) + scale_fill_manual(values = c(mainPalette[6], mainPalette[3]))
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2)
+```
+
+```{r cluster2, echo=FALSE, fig.align="center", fig.cap="Cluster Two", warning=FALSE}
+c = clusteredData %>% filter(CLUSTER == 2) 
+cEd = c %>% group_by(Education) %>% summarise(COUNT=n())
+cAge = c %>% group_by(AGE_GROUP) %>% summarise(COUNT=n())
+cLimit = c %>% group_by(CREDIT_LIMIT) %>% summarise(COUNT=n())
+cBill = c %>% group_by(BILL_AMOUNT) %>% summarise(COUNT=n())
+cStadning = c %>% group_by(CLIENT_STANDING) %>% summarise(COUNT=n())
+cDefault  = c %>% group_by(DO_DEFAULT) %>% summarise(COUNT=n())
+
+p1 = ggplot(cBill, aes(x="", y=COUNT, fill=BILL_AMOUNT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) 
+
+p2 = ggplot(cStadning, aes(x="", y=COUNT, fill=CLIENT_STANDING))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0)
+
+p3 = ggplot(cLimit, aes(x="", y=COUNT, fill=CREDIT_LIMIT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0)
+
+p4 = ggplot(cEd, aes(x="", y=COUNT, fill=Education))+
+geom_bar(stat = "identity") +   coord_polar("y", start=0)
+
+p5 = ggplot(cAge, aes(x="", y=COUNT, fill=AGE_GROUP))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0)
+
+p6 = ggplot(cDefault, aes(x="", y=COUNT, fill=DO_DEFAULT))+
+geom_bar(width = 1, stat = "identity" ) + scale_fill_manual(values = c(mainPalette[6], mainPalette[3]))
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2)
+```
+
+```{r cluster3, echo=FALSE, fig.align="center", fig.cap="Cluster Three", warning=FALSE}
+c = clusteredData %>% filter(CLUSTER == 3) 
+cEd = c %>% group_by(Education) %>% summarise(COUNT=n())
+cAge = c %>% group_by(AGE_GROUP) %>% summarise(COUNT=n())
+cLimit = c %>% group_by(CREDIT_LIMIT) %>% summarise(COUNT=n())
+cBill = c %>% group_by(BILL_AMOUNT) %>% summarise(COUNT=n())
+cStadning = c %>% group_by(CLIENT_STANDING) %>% summarise(COUNT=n())
+cDefault  = c %>% group_by(DO_DEFAULT) %>% summarise(COUNT=n())
+
+p1 = ggplot(cBill, aes(x="", y=COUNT, fill=BILL_AMOUNT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) 
+
+p2 = ggplot(cStadning, aes(x="", y=COUNT, fill=CLIENT_STANDING))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0)
+
+p3 = ggplot(cLimit, aes(x="", y=COUNT, fill=CREDIT_LIMIT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0)
+
+p4 = ggplot(cEd, aes(x="", y=COUNT, fill=Education))+
+geom_bar(stat = "identity") +   coord_polar("y", start=0)
+
+p5 = ggplot(cAge, aes(x="", y=COUNT, fill=AGE_GROUP))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0)
+
+p6 = ggplot(cDefault, aes(x="", y=COUNT, fill=DO_DEFAULT))+
+geom_bar(width = 1, stat = "identity" ) + scale_fill_manual(values = c(mainPalette[6], mainPalette[3]))
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2)
+```
+
+```{r cluster4, echo=FALSE, fig.align="center", fig.cap="Cluster Four", warning=FALSE}
+c = clusteredData %>% filter(CLUSTER == 4) 
+cEd = c %>% group_by(Education) %>% summarise(COUNT=n())
+cAge = c %>% group_by(AGE_GROUP) %>% summarise(COUNT=n())
+cLimit = c %>% group_by(CREDIT_LIMIT) %>% summarise(COUNT=n())
+cBill = c %>% group_by(BILL_AMOUNT) %>% summarise(COUNT=n())
+cStadning = c %>% group_by(CLIENT_STANDING) %>% summarise(COUNT=n())
+cDefault  = c %>% group_by(DO_DEFAULT) %>% summarise(COUNT=n())
+
+p1 = ggplot(cBill, aes(x="", y=COUNT, fill=BILL_AMOUNT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) 
+
+p2 = ggplot(cStadning, aes(x="", y=COUNT, fill=CLIENT_STANDING))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0)
+
+p3 = ggplot(cLimit, aes(x="", y=COUNT, fill=CREDIT_LIMIT))+
+geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0)
+
+p4 = ggplot(cEd, aes(x="", y=COUNT, fill=Education))+
+geom_bar(stat = "identity") +   coord_polar("y", start=0)
+
+p5 = ggplot(cAge, aes(x="", y=COUNT, fill=AGE_GROUP))+
+geom_bar(width = 1, stat = "identity") +   coord_polar("y", start=0)
+
+p6 = ggplot(cDefault, aes(x="", y=COUNT, fill=DO_DEFAULT))+
+geom_bar(width = 1, stat = "identity" ) + scale_fill_manual(values = c(mainPalette[6], mainPalette[3]))
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2)
+```
+
 
 
 # Model Deployment
