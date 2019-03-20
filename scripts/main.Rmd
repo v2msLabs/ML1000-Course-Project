@@ -461,6 +461,8 @@ pred.logRegModel.prob = predict(logRegModel, newdata =  testDataCopy, type = "pr
 roc.logRegModel = pROC::roc(testDataCopy$DEFAULT, as.vector(ifelse(pred.logRegModel.prob[,1] >0.5, 1,0)))
 auc.logRegModel = pROC::auc(roc.logRegModel)
 logRegModel
+# save the model. Do it once.
+# save(logRegModel, file="../data/logRegModel.Rdata")
 ```
 ```{r, echo=FALSE}
 confusionMatrix(data = pred.logRegModel.raw, testDataCopy$DEFAULT)
