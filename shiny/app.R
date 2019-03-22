@@ -29,9 +29,9 @@ cluster = 1;
 # Define UI for application that draws a histogram
 ui <- bootstrapPage( theme = "styles.css",
                      useShinyjs(), 
-   div(class = "title", titlePanel(title = tags$div(class="heading", "Credit Card Default Research"))),
-   div( class = "outer",width="100%", height="100%",
-      #  div("bkg", width="100%", height="100%"),
+ #  div(class = "title", titlePanel(title = tags$div(class="heading", "Credit Card Default Research"))),
+   div( class = "outer",
+        div(id="bkg"),
         absolutePanel( id = "controls", class = "control-panel", 
 
               selectInput('age', 'Age:', ageName, selected = ageName[2]),
@@ -40,10 +40,10 @@ ui <- bootstrapPage( theme = "styles.css",
               selectInput('marriage', 'Marital Status:', mStatus),
               selectInput('standing', 'Clinet Standing:', payStatusName, selected = payStatusName[3]),
               sliderInput("lastPayAmt", "Amount Paid Last Month (NT$):",
-                         min = 0, max = 100000,
+                         min = 0, max = 150000,
                          value = 10000, step = 50),
               sliderInput("lastBillAmt", "Last Month Bill Amount (NT$):",
-                         min = 0, max = 100000,
+                         min = 0, max = 200000,
                          value = 22000, step = 50),
               sliderInput("limit", "Credit Limit (NT$):",
                          min = 500, max = 500000,
@@ -51,7 +51,7 @@ ui <- bootstrapPage( theme = "styles.css",
               actionButton("evaluate", "Evaluate the Client", class = "btn")
         ),
         absolutePanel(id = "cluster-1", class="prediction-panel, hide",
-                        # condition = "input.sex == 1",
+
           tags$img(src="folks.jpg"),
           div(class="tile-img",
               tags$p("Cluster #1 - The Regular Folks. Nothing particular stands out about this group. Majority of the clients in this 
@@ -133,14 +133,7 @@ server <- function(input, output,session) {
     # predict default
     p = predict(logRegModel, newdata =  data, type = "prob")
 
-    # enable the default widget, once onlu
-    if (default == 0L) {
-      shinyjs::removeClass(class ="invisible", selector = "#default")
-      shinyjs::addClass(class ="default", selector = "#default")
-    }
-    
-    default <<- round(p[1,"1"]*100, digits = 0)
-    rv$default <- default
+    rv$default <- paste0("Chance of Default: ", round(p[1,"1"]*100, digits = 0)," %")
     client = data[1,];
     # find the cluster
     clusters = clusteredData %>% filter(EDUCATION == client$EDUCATION & 
@@ -163,6 +156,9 @@ server <- function(input, output,session) {
     } else {
       newCluster = 1
     }
+    if (is.na(newCluster)) {
+      newCluster = 1
+    }
     newId = paste0("#cluster-",newCluster)
     id = paste0("#cluster-",cluster)
     #hide all
@@ -170,6 +166,8 @@ server <- function(input, output,session) {
     # show new
     shinyjs::removeClass(class ="hide", selector = newId)
     shinyjs::addClass(class ="prediction-panel", selector = newId)
+    shinyjs::removeClass(class ="invisible", selector = "#default")
+    shinyjs::addClass(class ="default", selector = "#default")
     # update global
     cluster <<- newCluster
   })

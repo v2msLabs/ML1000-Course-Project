@@ -355,9 +355,9 @@ splitIdx = caret::createDataPartition(y=data$DEFAULT, p=0.7, list=FALSE)
 trainData = data[splitIdx,]
 testData  = data[-splitIdx,]
 
-# sample. REMOVE for final run
-#trainData = sample_n(trainData, 2000)
-#testData = sample_n(testData,2000)
+# sample. REMOVE before the final run
+# trainData = sample_n(trainData, 2000)
+# testData = sample_n(testData,2000)
 
 preprocParams = c("BoxCox", "center", "scale");
 
