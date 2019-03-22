@@ -40,8 +40,8 @@ ui <- bootstrapPage( theme = "styles.css",
               selectInput('marriage', 'Marital Status:', mStatus),
               selectInput('standing', 'Clinet Standing:', payStatusName, selected = payStatusName[3]),
               sliderInput("lastPayAmt", "Amount Paid Last Month (NT$):",
-                         min = 0, max = 150000,
-                         value = 10000, step = 50),
+                         min = 0, max = 100000,
+                         value = 1000, step = 50),
               sliderInput("lastBillAmt", "Last Month Bill Amount (NT$):",
                          min = 0, max = 200000,
                          value = 22000, step = 50),
@@ -133,7 +133,7 @@ server <- function(input, output,session) {
     # predict default
     p = predict(logRegModel, newdata =  data, type = "prob")
 
-    rv$default <- paste0("Chance of Default: ", round(p[1,"1"]*100, digits = 0)," %")
+    rv$default <- paste0("Chance of Default: ", round(p[1,"1"]*100, digits = 0),"%")
     client = data[1,];
     # find the cluster
     clusters = clusteredData %>% filter(EDUCATION == client$EDUCATION & 
